@@ -3,9 +3,9 @@ import logging
 from fastapi import Depends, FastAPI
 from semantic_kernel import Kernel
 
-from app.agents.llm import build_kernel
 from app.orchestrator import handle_request
 from app.schemas import AgentRequest, AgentResponse
+from app.utils.llm import build_kernel
 
 logging.basicConfig(level=logging.INFO)
 

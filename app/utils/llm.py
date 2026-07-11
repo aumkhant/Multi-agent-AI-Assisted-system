@@ -39,7 +39,9 @@ def build_kernel() -> Kernel:
     return kernel
 
 
-async def complete_chat(kernel: Kernel, system_prompt: str, user_prompt: str, temperature: float = 0.2) -> str:
+async def complete_chat(
+    kernel: Kernel, system_prompt: str, user_prompt: str, temperature: float = 0.2
+) -> str:
     """Runs one system+user turn through the kernel's chat completion service and returns text."""
     service = kernel.get_service(_SERVICE_ID)
     history = ChatHistory()

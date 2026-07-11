@@ -5,8 +5,8 @@ from dataclasses import dataclass
 
 from semantic_kernel import Kernel
 
-from app.agents.llm import complete_chat
 from app.schemas import AgentName, Intent
+from app.utils.llm import complete_chat
 
 logger = logging.getLogger("triage")
 
@@ -65,7 +65,6 @@ _OUT_OF_SCOPE_RE = re.compile(
     r")\b",
     re.I,
 )
-
 
 @dataclass
 class TriageResult:

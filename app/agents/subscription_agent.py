@@ -2,10 +2,10 @@ from semantic_kernel import Kernel
 from sqlalchemy.orm import Session
 
 from app.agents.base import AgentOutcome
-from app.agents.llm import complete_chat
 from app.schemas import GetCustomerStreamingSubscriptionInput
 from app.tools.base import ToolError
 from app.tools.subscription import get_customer_streaming_subscription
+from app.utils.llm import complete_chat
 
 _SYSTEM_PROMPT = """You are SubscriptionAgent for a streaming and rental platform. You are given the customer's subscription record as JSON. Answer using ONLY that data - plan name,
 status, renewal date, and auto-renew. Keep the answer to 1-3 sentences, customer-friendly. Never invent subscription details not present in the JSON.

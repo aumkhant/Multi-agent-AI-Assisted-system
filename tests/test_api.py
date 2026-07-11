@@ -140,3 +140,4 @@ def test_other_major_out_of_scope_request_is_rejected_without_tool_use():
     assert body["intent"] == "out_of_scope"
     assert body["selected_agent"] == "GuardrailAgent"
     assert body["tools_used"] == []
+

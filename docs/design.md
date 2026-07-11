@@ -29,7 +29,7 @@ than a class hierarchy - there's one router (Triage), one safety net (Guardrail)
 handful of narrowly-scoped specialists, so a shared base class would add indirection
 without buying anything at this size.
 
-LLM access is intentionally funneled through `app/agents/llm.py`, which wraps Semantic
+LLM access is intentionally funneled through `app/utils/llm.py`, which wraps Semantic
 Kernel around an OpenAI-compatible chat interface. That keeps the agent code provider-
 agnostic and allows the same orchestration flow to run either against a hosted OpenAI
 model or a local Ollama model exposed through its OpenAI-compatible `/v1` endpoint.
@@ -149,7 +149,7 @@ signal, not core MVP1 scope.
 
 - Tool selection is deterministic per-agent, not LLM function-calling - see above for why.
 - `search_film_catalog` uses `ILIKE` substring search with a simple stopword-based query
-  extractor (`app/agents/query_extraction.py`); it is not semantic search and can miss
+  extractor (`app/utils/query_extraction.py`); it is not semantic search and can miss
   titles phrased very differently from the message.
 - GuardrailAgent's final review is rule-based, not an additional LLM call - keeps the
   request path to at most 2 LLM calls (triage + one specialist) and avoids a third,

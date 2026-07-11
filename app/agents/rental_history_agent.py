@@ -2,9 +2,9 @@ from semantic_kernel import Kernel
 from sqlalchemy.orm import Session
 
 from app.agents.base import AgentOutcome
-from app.agents.llm import complete_chat
 from app.schemas import GetCustomerRentalHistoryInput
 from app.tools.rental_history import get_customer_rental_history
+from app.utils.llm import complete_chat
 
 _SYSTEM_PROMPT = """You are RentalHistoryAgent for a streaming and rental platform. You are
 given the customer's recent rentals as JSON. Summarize them (title and dates) in 1-3

@@ -14,7 +14,7 @@
 5. **Mock tools** - `search_kb` over `knowledge_base/*.md`, `create_handoff_ticket`
    in-memory.
 6. **Agents** - Semantic Kernel `Kernel` + `OpenAIChatCompletion` service
-   (`app/agents/llm.py`), one module per agent. Triage does LLM JSON classification with
+   (`app/utils/llm.py`), one module per agent. Triage does LLM JSON classification with
    a deterministic keyword fallback. Specialists call their tool directly, then one LLM
    call to phrase the answer from the tool's JSON output.
 7. **Guardrails** - deterministic input-side checks (`app/guardrails/checks.py`) run
@@ -48,13 +48,10 @@
 ## Assumptions
 
 - The grading environment can run Docker (for Postgres) and has outbound network access
-  to fetch the Pagila dump and call the OpenAI API.
-- "GPT 5.4 mini/nano" in the assignment PDF is not a real model id; `gpt-4o-mini` is used
-  as the closest available mini-tier OpenAI model, configurable via `OPENAI_MODEL`.
-- The assignment-supplied OpenAI key returns `401 invalid_api_key` regardless of model
-  requested (verified directly against `/v1/models` and `/v1/chat/completions`), so it
-  could not be used to verify live LLM calls in this environment - see
-  `docs/design.md#known-limitations--tradeoffs-mvp1`.
+  to fetch the Pagila dump; LLM calls can be satisfied either by the hosted OpenAI API or
+  by a local Ollama model exposed through its OpenAI-compatible endpoint.
+- The model id is configurable through `OPENAI_MODEL`, and provider selection is handled
+  through `OPENAI_BASE_URL` in the shared LLM utility.
 - One customer per request (`customer_id` on `AgentRequest`); no multi-turn memory beyond
   what's in `conversation_id` - each request is handled statelessly. Multi-turn context
   is out of scope for MVP1.
@@ -77,7 +74,7 @@ anywhere:
   on the paths being tested.
 
 Running the eval examples in `evals/evals.json` end-to-end against a live server (real
-Postgres + real OpenAI key) is a manual verification step, documented in the README -
+Postgres + a working hosted or local LLM endpoint) is a manual verification step, documented in the README -
 an automated runner is a deferred bonus signal.
 
 ## Known limitations

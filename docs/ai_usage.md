@@ -36,6 +36,9 @@ Claude Code (Anthropic), used interactively for this entire take-home.
   across the tool files were centralized into `app/schemas.py`, while the tool modules
   were narrowed to their operational responsibilities only (database access, local
   knowledge-base lookup, or mock handoff ticket creation).
+- Shared helper code was also reorganized based on developer feedback: LLM integration
+  and catalog query extraction were moved out of `app/agents/` into `app/utils/` so the
+  agents package contains only actual routing/specialist behavior.
 - All generated code was reviewed for correctness against the assignment's literal
   requirements (response schema fields, required agents/tools, migration shape, safety
   test cases) before being accepted; the test suite (19 tests) was run and confirmed
