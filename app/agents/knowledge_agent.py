@@ -2,7 +2,8 @@ from semantic_kernel import Kernel
 
 from app.agents.base import AgentOutcome
 from app.agents.llm import complete_chat
-from app.tools.knowledge_base import SearchKbInput, search_kb
+from app.schemas import SearchKbInput
+from app.tools.knowledge_base import search_kb
 
 _SYSTEM_PROMPT = """You are KnowledgeAgent for a streaming and rental platform's support
 desk. You are given knowledge-base search results as JSON. Answer using ONLY that data,

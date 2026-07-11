@@ -2,20 +2,8 @@ import itertools
 import threading
 from datetime import datetime, timezone
 
-from pydantic import BaseModel
-
+from app.schemas import CreateHandoffTicketInput, CreateHandoffTicketOutput
 from app.tools.base import ToolMetadata, logged_tool_call
-
-
-class CreateHandoffTicketInput(BaseModel):
-    summary: str
-    reason: str
-
-
-class CreateHandoffTicketOutput(BaseModel):
-    ticket_id: str
-    status: str
-    created_at: datetime
 
 
 METADATA = ToolMetadata(

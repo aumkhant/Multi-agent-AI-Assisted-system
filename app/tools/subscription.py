@@ -1,22 +1,11 @@
-from datetime import date
-
-from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.schemas import (
+    GetCustomerStreamingSubscriptionInput,
+    GetCustomerStreamingSubscriptionOutput,
+)
 from app.tools.base import ToolError, ToolMetadata, logged_tool_call
-
-
-class GetCustomerStreamingSubscriptionInput(BaseModel):
-    customer_id: int
-
-
-class GetCustomerStreamingSubscriptionOutput(BaseModel):
-    plan_name: str
-    status: str
-    start_date: date
-    end_date: date | None
-    auto_renew: bool
 
 
 METADATA = ToolMetadata(

@@ -3,11 +3,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.schemas import (
+    CreateHandoffTicketInput,
+    GetCustomerStreamingSubscriptionInput,
+    SearchFilmCatalogInput,
+    SearchKbInput,
+)
 from app.tools.base import ToolError
-from app.tools.catalog import SearchFilmCatalogInput, search_film_catalog
-from app.tools.handoff import CreateHandoffTicketInput, create_handoff_ticket, list_tickets
-from app.tools.knowledge_base import SearchKbInput, search_kb
-from app.tools.subscription import GetCustomerStreamingSubscriptionInput, get_customer_streaming_subscription
+from app.tools.catalog import search_film_catalog
+from app.tools.handoff import create_handoff_ticket, list_tickets
+from app.tools.knowledge_base import search_kb
+from app.tools.subscription import get_customer_streaming_subscription
 
 
 def _mock_session(rows):

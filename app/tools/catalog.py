@@ -1,24 +1,8 @@
-from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.schemas import FilmResult, SearchFilmCatalogInput, SearchFilmCatalogOutput
 from app.tools.base import ToolMetadata, logged_tool_call
-
-
-class FilmResult(BaseModel):
-    title: str
-    category: str
-    rating: str
-    rental_rate: float
-    streaming_available: bool
-
-
-class SearchFilmCatalogInput(BaseModel):
-    query: str
-
-
-class SearchFilmCatalogOutput(BaseModel):
-    results: list[FilmResult]
 
 
 METADATA = ToolMetadata(

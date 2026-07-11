@@ -1,25 +1,10 @@
 import re
 from pathlib import Path
 
-from pydantic import BaseModel
-
+from app.schemas import KbArticle, SearchKbInput, SearchKbOutput
 from app.tools.base import ToolMetadata, logged_tool_call
 
 KB_DIR = Path(__file__).resolve().parent.parent.parent / "knowledge_base"
-
-
-class SearchKbInput(BaseModel):
-    query: str
-
-
-class KbArticle(BaseModel):
-    title: str
-    snippet: str
-    source: str
-
-
-class SearchKbOutput(BaseModel):
-    articles: list[KbArticle]
 
 
 METADATA = ToolMetadata(

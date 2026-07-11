@@ -22,6 +22,20 @@ Claude Code (Anthropic), used interactively for this entire take-home.
   mini-tier model, rather than a different provider) and the overall MVP1 scope boundary
   were explicit decisions made by the developer in response to Claude's clarifying
   questions, not autonomous choices.
+- The routing/guardrail flow was refined through human review after implementation.
+  In particular, the developer explicitly challenged the initial behavior for unrelated
+  queries, which led to adding an `out_of_scope` path in triage plus deterministic
+  detection for clearly unrelated requests before they could fall through to the
+  knowledge-base agent.
+- The developer also explicitly validated that high-priority safety checks such as
+  `is_harmful_content_request` belong before the triage LLM call in the orchestrator,
+  so those categories are blocked deterministically rather than depending on model
+  classification.
+- The code structure was refactored based on developer direction to make module
+  boundaries cleaner: the Pydantic request/response models that were originally spread
+  across the tool files were centralized into `app/schemas.py`, while the tool modules
+  were narrowed to their operational responsibilities only (database access, local
+  knowledge-base lookup, or mock handoff ticket creation).
 - All generated code was reviewed for correctness against the assignment's literal
   requirements (response schema fields, required agents/tools, migration shape, safety
   test cases) before being accepted; the test suite (19 tests) was run and confirmed

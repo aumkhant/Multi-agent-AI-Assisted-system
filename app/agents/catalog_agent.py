@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from app.agents.base import AgentOutcome
 from app.agents.llm import complete_chat
 from app.agents.query_extraction import extract_title_query
-from app.tools.catalog import SearchFilmCatalogInput, search_film_catalog
+from app.schemas import SearchFilmCatalogInput
+from app.tools.catalog import search_film_catalog
 
 _SYSTEM_PROMPT = """You are CatalogAgent, a customer-friendly assistant for a streaming and
 rental platform. You are given search results from the film catalog as JSON. Answer the

@@ -1,12 +1,13 @@
 from app.agents.base import AgentOutcome
-from app.tools.handoff import CreateHandoffTicketInput, create_handoff_ticket
+from app.schemas import CreateHandoffTicketInput
+from app.tools.handoff import create_handoff_ticket
 
 
 def handle(conversation_id: str, message: str, reason: str) -> AgentOutcome:
     """Creates a handoff ticket and lets the customer know a human will follow up.
     Never performs an account mutation itself - only the human agent does."""
     result = create_handoff_ticket(
-        conversation_id, CreateHandoffTicketInput(summary=message[:280], reason=reason)
+        conversation_id, CreateHandoffTicketInput(summary=message, reason=reason)
     )
 
     answer = (

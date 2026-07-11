@@ -107,3 +107,36 @@ def test_response_matches_required_schema_fields():
         "guardrail_result",
     ):
         assert field in body
+
+
+def test_obviously_out_of_scope_request_is_not_sent_to_knowledge_base():
+    response = client.post(
+        "/agent/respond",
+        json={
+            "customer_id": 1,
+            "conversation_id": "conv_oos",
+            "message": "Give me the latest details about the ongoing FIFA World Cup.",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "out_of_scope"
+    assert body["selected_agent"] == "GuardrailAgent"
+    assert body["tools_used"] == []
+    assert "streaming and rental support service" in body["answer"]
+
+
+def test_other_major_out_of_scope_request_is_rejected_without_tool_use():
+    response = client.post(
+        "/agent/respond",
+        json={
+            "customer_id": 1,
+            "conversation_id": "conv_oos_medical",
+            "message": "What treatment should I take for chest pain and dizziness?",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "out_of_scope"
+    assert body["selected_agent"] == "GuardrailAgent"
+    assert body["tools_used"] == []

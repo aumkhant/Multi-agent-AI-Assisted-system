@@ -1,25 +1,12 @@
-from datetime import datetime
-
-from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.schemas import (
+    GetCustomerRentalHistoryInput,
+    GetCustomerRentalHistoryOutput,
+    RentalRecord,
+)
 from app.tools.base import ToolMetadata, logged_tool_call
-
-
-class GetCustomerRentalHistoryInput(BaseModel):
-    customer_id: int
-    limit: int = 5
-
-
-class RentalRecord(BaseModel):
-    title: str
-    rental_date: datetime
-    return_date: datetime | None
-
-
-class GetCustomerRentalHistoryOutput(BaseModel):
-    rentals: list[RentalRecord]
 
 
 METADATA = ToolMetadata(

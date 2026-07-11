@@ -6,11 +6,12 @@
 POST /agent/respond
         │
         ▼
-Deterministic input guardrails (prompt injection / sensitive mutation)
+Deterministic input guardrails (prompt injection / harmful content / sensitive mutation)
         │  (only if the message passes)
         ▼
 TriageAgent  (LLM classification -> intent, selected_agent, confidence, reason)
         │  (low confidence -> HumanHandoffAgent fallback)
+        │  (explicit unrelated-topic detection -> GuardrailAgent / out_of_scope)
         ▼
 Specialist agent (Catalog | Subscription | RentalHistory | Knowledge | HumanHandoff)
         │  each specialist calls exactly its own tool(s), then an LLM call
@@ -28,18 +29,31 @@ than a class hierarchy - there's one router (Triage), one safety net (Guardrail)
 handful of narrowly-scoped specialists, so a shared base class would add indirection
 without buying anything at this size.
 
+LLM access is intentionally funneled through `app/agents/llm.py`, which wraps Semantic
+Kernel around an OpenAI-compatible chat interface. That keeps the agent code provider-
+agnostic and allows the same orchestration flow to run either against a hosted OpenAI
+model or a local Ollama model exposed through its OpenAI-compatible `/v1` endpoint.
+
 ## Why deterministic guardrails run before triage
 
 Prompt injection ("ignore previous instructions...") and sensitive account mutation
-("cancel my subscription now") are both safety-critical failure modes explicitly called
+("cancel my subscription now"), plus clearly harmful-content requests, are safety-critical
+failure modes explicitly called
 out in the assignment's eval table. Relying on the LLM to refuse them is not robust - a
 mini model can be talked out of a soft instruction. Both cases are instead caught by
 regex checks in `app/guardrails/checks.py` *before* the LLM triage call ever runs, so
 the safe behavior does not depend on the model's judgement on that turn:
 
 - Prompt injection -> blocked immediately, `GuardrailAgent`/`unsafe_request`, no LLM call.
+- Harmful content -> blocked immediately, `GuardrailAgent`/`unsafe_request`, no LLM call.
 - Sensitive mutation -> escalated immediately to `HumanHandoffAgent`, which creates a
   ticket and explicitly states no account change was made.
+
+There is also a lightweight deterministic out-of-scope detector in triage for obviously
+unrelated requests (for example sports/news/weather/medical/coding questions). That path
+avoids wasting a knowledge-base lookup on clearly off-domain traffic while still keeping
+the main routing decision inside the single triage step rather than adding a second LLM
+call just for scope detection.
 
 The `GuardrailAgent` still runs a second, LLM-output-side pass (`app/agents/guardrail_agent.py`)
 after any specialist responds, checking for leaked system-prompt phrasing and for
@@ -51,7 +65,7 @@ a redundant one.
 
 | Agent | Responsibility | Tools |
 |---|---|---|
-| TriageAgent | Classify intent, pick specialist, emit confidence + reason. Falls back to a deterministic keyword classifier if the LLM call fails or returns unparsable JSON. | none |
+| TriageAgent | Classify intent, pick specialist, emit confidence + reason. Falls back to deterministic keyword/out-of-scope rules if the LLM call fails or returns unparsable JSON. | none |
 | CatalogAgent | Film/streaming questions | `search_film_catalog` |
 | SubscriptionAgent | Subscription status/renewal | `get_customer_streaming_subscription` |
 | RentalHistoryAgent | Recent rental summary | `get_customer_rental_history` |
@@ -73,7 +87,7 @@ later is a contained change, not a rewrite.
 ## Tool contracts and MCP readiness
 
 Every tool (`app/tools/*.py`) has:
-- A typed Pydantic input model and output model.
+- A typed Pydantic input model and output model, centralized in `app/schemas.py`.
 - A `ToolMetadata` record (name, description, input/output JSON schema, error behavior,
   auth requirement, ownership boundary, backing system) - this is the MCP-ready contract
   the assignment asks for, without standing up an actual MCP server for MVP1.
@@ -102,9 +116,13 @@ cancelled one for `customer_id=2`) for local testing.
 
 - **Never reveal system instructions.** Deterministic regex check + a second check on
   the final answer text.
+- **Never assist with harmful-content requests.** These are blocked before triage using a
+  deterministic regex check so refusal is not dependent on LLM behavior.
 - **Never mutate account state.** No tool exists that can change a subscription/account;
   `create_handoff_ticket` only ever creates a ticket. Sensitive-sounding requests are
   intercepted before triage and always routed to `HumanHandoffAgent`.
+- **Stay in domain.** Obviously unrelated questions are routed to `out_of_scope` and
+  answered with a domain-limitation message instead of hitting the support KB.
 - **Protect customer data.** Specialist agents only ever query by the `customer_id` on
   the current request; there is no tool that takes an arbitrary customer_id from
   message text.
@@ -141,15 +159,3 @@ signal, not core MVP1 scope.
   bonus signals, deferred out of MVP1 by design.
 - Eval examples are provided as data (`evals/evals.json`); an automated eval-runner
   script is a bonus signal, not yet implemented.
-- The OpenAI key supplied in the assignment PDF returns `401 invalid_api_key` directly
-  from `https://api.openai.com/v1/models` and `/v1/chat/completions` - confirmed
-  independent of model name (tried both `gpt-4o-mini` and the PDF's literal
-  `gpt-5.4-mini`, same error either way). This means live LLM-generated answers
-  (catalog/subscription/rental/knowledge phrasing, LLM-based triage) could not be
-  verified end-to-end in this environment. What *was* verified live: Pagila restore,
-  Alembic migrations, and every deterministic/fallback code path (prompt injection
-  block, sensitive-mutation escalation, low-confidence-triage escalation, missing
-  customer_id handling) against a running server with a real Postgres. The LLM-dependent
-  paths are covered instead by the automated tests, which mock the chat completion call.
-  A working key should be dropped into `.env` to confirm the LLM-phrased answers before
-  final submission.

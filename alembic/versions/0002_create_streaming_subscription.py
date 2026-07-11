@@ -32,6 +32,8 @@ def upgrade() -> None:
         sa.Column("end_date", sa.Date(), nullable=True),
         sa.Column("auto_renew", sa.Boolean(), nullable=False, server_default=sa.true()),
     )
+    
+    ## create index for faster lookups on customer_id, since we will often query subscriptions by customer_id.
     op.create_index(
         "ix_streaming_subscription_customer_id", "streaming_subscription", ["customer_id"]
     )
@@ -43,7 +45,8 @@ def upgrade() -> None:
             (customer_id, plan_name, status, start_date, end_date, auto_renew)
         VALUES
             (1, 'Premium', 'active', '2026-01-01', NULL, TRUE),
-            (2, 'Basic', 'cancelled', '2025-06-01', '2026-06-01', FALSE)
+            (2, 'Basic', 'cancelled', '2025-06-01', '2026-06-01', FALSE),
+            (3, 'Standard', 'trial', '2026-03-15', '2026-04-15', FALSE)
         """
     )
 

@@ -17,9 +17,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    ## here we assume that film table already exists, and we are just adding a new column (streaming_available) to it.
+    ## server_default=sa.false() lets Postgres fill existing rows with FALSE for the new column, so that the migration doesn't fail due to NULL values in a non-nullable column.
+    ## nullable=False makes the column required
+    
     op.add_column(
         "film",
-        sa.Column("streaming_available", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("streaming_available", sa.Boolean(), nullable=False, server_default=sa.false())
     )
     # Seed a plausible mix of streaming availability for local testing/demo purposes.
     op.execute("UPDATE film SET streaming_available = TRUE WHERE film_id % 3 = 0")

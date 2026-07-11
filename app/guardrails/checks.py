@@ -24,20 +24,17 @@ _MUTATION_PATTERNS = [
     r"upgrade (my )?(plan|subscription)",
 ]
 
-_URGENCY_MARKERS = [r"right now", r"immediately", r"asap"]
-
 _HARM_PATTERNS = [
     r"how (do|can|to) i (harm|hurt|attack|kill|poison|assault)",
     r"how to (harm|hurt|attack|kill|poison|assault) (a |an |my |someone|somebody|myself|him|her|them)",
     r"(hurt|harm|kill|attack) (myself|someone|somebody|a person|people)",
     r"(kill|hurt|harm) myself",
     r"(commit|planning) suicide",
-    r"(make|build) a (bomb|weapon|explosive)",
+    r"(make|build) a (bomb|weapon|explosive|grenade|gun|knife|poison)",
 ]
 
 _injection_re = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
 _mutation_re = re.compile("|".join(_MUTATION_PATTERNS), re.IGNORECASE)
-_urgency_re = re.compile("|".join(_URGENCY_MARKERS), re.IGNORECASE)
 _harm_re = re.compile("|".join(_HARM_PATTERNS), re.IGNORECASE)
 
 
@@ -49,10 +46,6 @@ def is_sensitive_mutation_request(message: str) -> bool:
     """A request to change account/billing state, which this assistant must never perform
     directly - it can only escalate/create a handoff ticket."""
     return bool(_mutation_re.search(message))
-
-
-def has_urgency_marker(message: str) -> bool:
-    return bool(_urgency_re.search(message))
 
 
 def is_harmful_content_request(message: str) -> bool:

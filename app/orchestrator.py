@@ -73,6 +73,27 @@ async def handle_request(kernel: Kernel, conversation_id: str, message: str, cus
 
     triage_result = await triage.classify(kernel, message)
 
+    if triage_result.intent == "out_of_scope":
+        answer, guardrail_result = guardrail_agent.review(
+            "I can help only with this streaming and rental support service, such as film "
+            "availability, subscriptions, rental history, and account help. I can't answer "
+            "general world-knowledge or unrelated-topic questions.",
+            "out_of_scope",
+            [],
+            "none",
+        )
+        return AgentResponse(
+            conversation_id=conversation_id,
+            intent="out_of_scope",
+            selected_agent="GuardrailAgent",
+            answer=answer,
+            confidence=triage_result.confidence,
+            tools_used=[],
+            citations=[],
+            next_action="none",
+            guardrail_result=guardrail_result,
+        )
+
     if (
         triage_result.confidence < settings.triage_confidence_threshold
         and triage_result.selected_agent != "HumanHandoffAgent"

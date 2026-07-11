@@ -10,9 +10,8 @@ from app.schemas import AgentName, Intent
 
 logger = logging.getLogger("triage")
 
-_SYSTEM_PROMPT = """You are the TriageAgent for a streaming/rental support assistant.
-Classify the customer's message into exactly one intent and choose the specialist agent
-to handle it. Respond with ONLY a JSON object, no prose, matching this shape:
+_SYSTEM_PROMPT = """You are the TriageAgent for a streaming/rental support assistant. Classify the customer's message into exactly one intent and choose the specialist agent
+to handle it. Respond with ONLY a JSON object, no prose, matching this structure: 
 {"intent": "<intent>", "selected_agent": "<agent>", "confidence": <0.0-1.0>, "reason": "<short reason>"}
 
 Valid (intent, selected_agent) pairs:
@@ -20,7 +19,8 @@ Valid (intent, selected_agent) pairs:
 - ("subscription_question", "SubscriptionAgent") - questions about subscription status, plan, renewal, auto-renew.
 - ("rental_history", "RentalHistoryAgent") - questions about what the customer has rented recently.
 - ("knowledge_question", "KnowledgeAgent") - general how-do-I support questions (payment method, account settings, troubleshooting).
-- ("human_handoff", "HumanHandoffAgent") - explicit requests to talk to a human, or anything you are unsure how to classify.
+- ("human_handoff", "HumanHandoffAgent") - explicit requests to talk to a human agent, or if the request is unclear and you are not confident which agent to route to.
+- ("out_of_scope", "GuardrailAgent") - requests unrelated to this streaming/rental support product, such as general news, sports, weather, politics, coding, medical, legal, finance, or travel questions.
 
 If you are not confident, still return your best guess but set a low confidence score.
 """
@@ -31,6 +31,7 @@ _INTENT_AGENT: dict[Intent, AgentName] = {
     "rental_history": "RentalHistoryAgent",
     "knowledge_question": "KnowledgeAgent",
     "human_handoff": "HumanHandoffAgent",
+    "out_of_scope": "GuardrailAgent",
 }
 
 _KEYWORD_RULES: list[tuple[re.Pattern, Intent]] = [
@@ -41,6 +42,30 @@ _KEYWORD_RULES: list[tuple[re.Pattern, Intent]] = [
     (re.compile(r"human|agent|representative|talk to (a )?person", re.I), "human_handoff"),
 ]
 
+_DOMAIN_RE = re.compile(
+    r"\b(stream|streaming|watch|movie|movies|film|films|catalog|rental|rentals|rented|"
+    r"subscription|subscriptions|plan|plans|renew|renewal|auto-renew|playback|buffering|"
+    r"account|password|payment|billing|support|knowledge base|customer service)\b",
+    re.I,
+)
+
+_OUT_OF_SCOPE_RE = re.compile(
+    r"\b("
+    r"fifa|world cup|soccer|football match|nba|nfl|ipl|cricket|tennis|score|standings|"
+    r"weather|forecast|temperature|rain|storm|climate|"
+    r"president|prime minister|election|parliament|senate|war|geopolitics|"
+    r"stock market|stock price|share price|bitcoin|crypto|ethereum|market cap|"
+    r"diagnose|diagnosis|symptom|symptoms|treatment|medicine|medical advice|"
+    r"legal advice|lawsuit|contract law|tax return|tax advice|"
+    r"recipe|ingredients|cook|bake|nutrition plan|"
+    r"flight|hotel|visa|itinerary|travel plan|"
+    r"python code|javascript|debug my code|algorithm|leetcode|"
+    r"solve this equation|math problem|homework|essay|translate|"
+    r"latest news|breaking news|headline"
+    r")\b",
+    re.I,
+)
+
 
 @dataclass
 class TriageResult:
@@ -50,7 +75,23 @@ class TriageResult:
     reason: str
 
 
+def _is_out_of_scope(message: str) -> bool:
+    normalized = re.sub(r"\s+", " ", message).strip().lower()
+    if not normalized:
+        return False
+    if _DOMAIN_RE.search(normalized):
+        return False
+    return bool(_OUT_OF_SCOPE_RE.search(normalized))
+
+
 def _deterministic_fallback(message: str) -> TriageResult:
+    if _is_out_of_scope(message):
+        return TriageResult(
+            intent="out_of_scope",
+            selected_agent="GuardrailAgent",
+            confidence=0.95,
+            reason="Deterministic out-of-scope detection for a clearly unrelated request.",
+        )
     for pattern, intent in _KEYWORD_RULES:
         if pattern.search(message):
             return TriageResult(
@@ -68,6 +109,7 @@ def _deterministic_fallback(message: str) -> TriageResult:
 
 
 def _parse_llm_response(raw: str) -> TriageResult | None:
+    ## to validate the returned LLM response is a JSON
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     if not match:
         return None
@@ -85,6 +127,13 @@ def _parse_llm_response(raw: str) -> TriageResult | None:
 
 
 async def classify(kernel: Kernel, message: str) -> TriageResult:
+    if _is_out_of_scope(message):
+        return TriageResult(
+            intent="out_of_scope",
+            selected_agent="GuardrailAgent",
+            confidence=0.95,
+            reason="Deterministic out-of-scope detection for a clearly unrelated request.",
+        )
     try:
         raw = await complete_chat(kernel, _SYSTEM_PROMPT, message, temperature=0.0)
     except Exception:
