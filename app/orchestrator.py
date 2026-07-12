@@ -93,7 +93,8 @@ async def handle_request(kernel: Kernel, conversation_id: str, message: str, cus
             next_action="none",
             guardrail_result=guardrail_result,
         )
-
+    
+    ## if the triage confidence is below the threshold and the selected agent is not HumanHandoffAgent, escalate to human handoff
     if (
         triage_result.confidence < settings.triage_confidence_threshold
         and triage_result.selected_agent != "HumanHandoffAgent"

@@ -55,6 +55,16 @@ avoids wasting a knowledge-base lookup on clearly off-domain traffic while still
 the main routing decision inside the single triage step rather than adding a second LLM
 call just for scope detection.
 
+An earlier revision also gated any in-scope LLM classification on matching a fixed
+domain-keyword list (`_DOMAIN_RE`) before trusting it, downgrading to `out_of_scope`
+otherwise. That was removed: it produced false positives on legitimate requests that
+don't happen to contain a domain keyword (e.g. "Do you have Amadeus Holy?" - a pure
+title lookup with no word like "movie"/"stream" in it). The gate isn't needed for
+correctness anyway, because every specialist agent (Catalog/Subscription/RentalHistory/
+Knowledge) only answers from its tool's JSON output and explicitly handles the
+no-match/empty case (e.g. CatalogAgent says the film could not be found), so a
+misrouted off-topic message can't produce a hallucinated answer even without this gate.
+
 The `GuardrailAgent` still runs a second, LLM-output-side pass (`app/agents/guardrail_agent.py`)
 after any specialist responds, checking for leaked system-prompt phrasing and for
 "grounded" intents (catalog/subscription/rental/knowledge) that somehow produced an
@@ -100,8 +110,13 @@ Every tool (`app/tools/*.py`) has:
 files under `knowledge_base/`. `create_handoff_ticket` writes to an in-memory list (mock,
 per the assignment's "Mock" designation).
 
-A local MCP server (`pagila-support-mcp`) exposing the two DB-backed tools is a listed
-bonus signal, intentionally deferred - see Known Limitations.
+A local MCP server (`app/mcp_server.py`, run via `python -m app.mcp_server`) now exposes
+all five tools over stdio using `mcp.server.fastmcp.FastMCP`, reusing the same
+`app/tools/*.py` functions and `ToolMetadata` name/description - so an MCP client
+(Claude Desktop, Claude Code, etc.) can call `search_film_catalog`,
+`get_customer_streaming_subscription`, `get_customer_rental_history`, `search_kb`, and
+`create_handoff_ticket` directly, independent of the FastAPI orchestrator. See the
+README for how to register it with an MCP client.
 
 ## Database
 
@@ -154,8 +169,9 @@ signal, not core MVP1 scope.
 - GuardrailAgent's final review is rule-based, not an additional LLM call - keeps the
   request path to at most 2 LLM calls (triage + one specialist) and avoids a third,
   harder-to-test LLM-judged step. An LLM-based review pass is a natural next iteration.
-- No MCP server, no streaming responses, no tracing/cost logging, no Docker Compose for
-  the app itself (only for Postgres) - these are the assignment's explicitly-labeled
-  bonus signals, deferred out of MVP1 by design.
+- No streaming responses, no tracing/cost logging, no Docker Compose for the app itself
+  (only for Postgres) - these are the assignment's explicitly-labeled bonus signals,
+  deferred out of MVP1 by design. (A local MCP server is now implemented - see
+  "Tool contracts and MCP readiness" above.)
 - Eval examples are provided as data (`evals/evals.json`); an automated eval-runner
   script is a bonus signal, not yet implemented.

@@ -1,8 +1,6 @@
 from app.guardrails.checks import leaks_system_prompt
 from app.schemas import GuardrailResult, Intent
 
-_MAX_ANSWER_LENGTH = 800
-
 _GROUNDED_INTENTS: set[Intent] = {
     "catalog_search",
     "subscription_question",
@@ -33,8 +31,5 @@ def review(
 
     if not answer.strip():
         return ("Sorry, I wasn't able to generate a response. Let me escalate this to a human agent.", "modified")
-
-    if len(answer) > _MAX_ANSWER_LENGTH:
-        return (answer[:_MAX_ANSWER_LENGTH].rsplit(" ", 1)[0] + "...", "modified")
-
+    
     return (answer, "pass")

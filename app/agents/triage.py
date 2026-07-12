@@ -99,16 +99,6 @@ def _deterministic_fallback(message: str) -> TriageResult:
         )
     for pattern, intent in _KEYWORD_RULES:
         if pattern.search(message):
-            if intent != "human_handoff" and not _DOMAIN_RE.search(message):
-                # e.g. "how do i"/"troubleshoot" are generic enough to match
-                # off-topic messages; without a domain keyword, treat the match
-                # as a false positive rather than routing to a specialist.
-                return TriageResult(
-                    intent="out_of_scope",
-                    selected_agent="GuardrailAgent",
-                    confidence=0.5,
-                    reason=f"Keyword fallback matched {intent} but no domain keywords found; treating as out-of-scope.",
-                )
             return TriageResult(
                 intent=intent,
                 selected_agent=_INTENT_AGENT[intent],
@@ -159,15 +149,4 @@ async def classify(kernel: Kernel, message: str) -> TriageResult:
     if parsed is None:
         logger.warning("triage_llm_response_unparsable", extra={"raw": raw})
         return _deterministic_fallback(message)
-    if parsed.intent not in ("human_handoff", "out_of_scope") and not _DOMAIN_RE.search(message):
-        # Any non-handoff intent should be backed by a domain keyword; the LLM can
-        # mis-route an unrelated message into any of catalog/subscription/rental/
-        # knowledge rather than just one, so gate on the intent category, not a
-        # specific intent.
-        return TriageResult(
-            intent="out_of_scope",
-            selected_agent="GuardrailAgent",
-            confidence=0.6,
-            reason=f"LLM classified as {parsed.intent} but no domain keywords matched; treating as out-of-scope.",
-        )
     return parsed

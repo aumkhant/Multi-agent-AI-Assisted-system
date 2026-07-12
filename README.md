@@ -57,7 +57,32 @@ curl -X POST localhost:8000/agent/respond \
   -d '{"customer_id": 1, "conversation_id": "conv_001", "message": "Is Alien available for streaming?"}'
 ```
 
-### 6. Run tests
+### 6. (Optional) Run the local MCP server
+
+The same tools used by the agents (`app/tools/`) are also exposed over a local MCP
+server (`app/mcp_server.py`), so any MCP client (Claude Desktop, Claude Code, etc.) can
+call `search_film_catalog`, `get_customer_streaming_subscription`,
+`get_customer_rental_history`, `search_kb`, and `create_handoff_ticket` directly:
+
+```bash
+python -m app.mcp_server
+```
+
+This runs over stdio. To register it with Claude Code, add to `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "support-assistant-tools": {
+      "command": "python",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "/absolute/path/to/this/repo"
+    }
+  }
+}
+```
+
+### 7. Run tests
 
 ```bash
 pytest
@@ -72,7 +97,8 @@ behavior (including cases that do call the LLM).
 ## Project layout
 
 ```
-app/            FastAPI app, config, DB session, orchestrator, agents, tools, guardrails
+app/            FastAPI app, config, DB session, orchestrator, agents, tools, guardrails,
+                mcp_server.py (local MCP server exposing the same tools)
 alembic/        Migrations (0001 streaming_available column, 0002 streaming_subscription)
 knowledge_base/ Local markdown articles used by search_kb
 evals/          10 eval examples (input, expected intent/agent/tools, safety behavior)

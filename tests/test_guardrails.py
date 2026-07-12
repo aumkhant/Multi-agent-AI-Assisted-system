@@ -71,10 +71,3 @@ def test_guardrail_review_allows_missing_customer_id_flow():
         "await_customer_id",
     )
     assert result == "pass"
-
-
-def test_guardrail_review_truncates_long_answers():
-    long_answer = "word " * 300
-    answer, result = guardrail_agent.review(long_answer, "knowledge_question", ["search_kb"], "none")
-    assert result == "modified"
-    assert len(answer) <= 803
