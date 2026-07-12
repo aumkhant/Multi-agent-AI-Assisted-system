@@ -20,7 +20,13 @@ Valid (intent, selected_agent) pairs:
 - ("rental_history", "RentalHistoryAgent") - questions about what the customer has rented recently.
 - ("knowledge_question", "KnowledgeAgent") - general how-do-I support questions (payment method, account settings, troubleshooting).
 - ("human_handoff", "HumanHandoffAgent") - explicit requests to talk to a human agent, or if the request is unclear and you are not confident which agent to route to.
-- ("out_of_scope", "GuardrailAgent") - requests unrelated to this streaming/rental support product, such as general news, sports, weather, politics, coding, medical, legal, finance, or travel questions.
+- ("out_of_scope", "GuardrailAgent") - requests unrelated to this streaming/rental support product. This includes, but is not limited to, general news, sports, weather, politics, coding, medical, legal, finance, or travel questions.
+
+The first five intents only apply to requests that clearly concern this streaming/rental support
+product (movies, catalog, streaming, subscriptions, rentals, account, payment, or app troubleshooting
+for this service). Do not stretch "knowledge_question" to cover generic requests just because they
+resemble a how-to question - if the topic itself is unrelated to this product, choose "out_of_scope"
+instead, even if it is not one of the example categories listed above.
 
 If you are not confident, still return your best guess but set a low confidence score.
 """
@@ -93,6 +99,16 @@ def _deterministic_fallback(message: str) -> TriageResult:
         )
     for pattern, intent in _KEYWORD_RULES:
         if pattern.search(message):
+            if intent != "human_handoff" and not _DOMAIN_RE.search(message):
+                # e.g. "how do i"/"troubleshoot" are generic enough to match
+                # off-topic messages; without a domain keyword, treat the match
+                # as a false positive rather than routing to a specialist.
+                return TriageResult(
+                    intent="out_of_scope",
+                    selected_agent="GuardrailAgent",
+                    confidence=0.5,
+                    reason=f"Keyword fallback matched {intent} but no domain keywords found; treating as out-of-scope.",
+                )
             return TriageResult(
                 intent=intent,
                 selected_agent=_INTENT_AGENT[intent],
@@ -143,4 +159,15 @@ async def classify(kernel: Kernel, message: str) -> TriageResult:
     if parsed is None:
         logger.warning("triage_llm_response_unparsable", extra={"raw": raw})
         return _deterministic_fallback(message)
+    if parsed.intent not in ("human_handoff", "out_of_scope") and not _DOMAIN_RE.search(message):
+        # Any non-handoff intent should be backed by a domain keyword; the LLM can
+        # mis-route an unrelated message into any of catalog/subscription/rental/
+        # knowledge rather than just one, so gate on the intent category, not a
+        # specific intent.
+        return TriageResult(
+            intent="out_of_scope",
+            selected_agent="GuardrailAgent",
+            confidence=0.6,
+            reason=f"LLM classified as {parsed.intent} but no domain keywords matched; treating as out-of-scope.",
+        )
     return parsed
