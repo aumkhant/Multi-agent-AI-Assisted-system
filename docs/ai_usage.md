@@ -11,10 +11,11 @@ Claude Code (Anthropic), used interactively for this entire take-home.
 - Scaffolding the whole project: `app/` package layout, Alembic setup, Docker Compose
   for Postgres, tool contracts, Semantic Kernel agent wiring, the orchestrator, FastAPI
   endpoint, guardrail checks, tests, evals, and this docs folder.
-- Proposing the MVP1 scope cut (full required functional slice, bonus signals like an
-  MCP server / tracing / streaming deferred) and the deterministic-tool-call-then-LLM-
+- Proposing the MVP1 scope cut (full required functional slice, with some bonus signals
+  like tracing and streaming deferred) and the deterministic-tool-call-then-LLM-
   phrasing pattern for specialist agents, both of which were confirmed with the human
-  developer before implementation started.
+  developer before implementation started. A local MCP server was later added as an
+  additional bonus capability.
 
 ## What was manually reviewed / decided by the human developer
 
