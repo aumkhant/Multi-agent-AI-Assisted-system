@@ -25,8 +25,8 @@
    tests (pure functions), API tests (FastAPI `TestClient`, kernel dependency overridden
    so tests don't need a live OpenAI key; safety-critical paths are exercised
    end-to-end since they don't require the LLM).
-10. **Evals** - `evals/evals.json`, 10 examples covering every required eval-table row
-    plus two extra edge cases (catalog not-found, KB no-answer).
+10. **Evals** - `evals/evals.json`, 11 examples covering every required eval-table row
+    plus extra edge cases (catalog not-found, out-of-scope, harmful-content request).
 11. **Docs** - this plan, `docs/design.md`, `docs/ai_usage.md`, README setup steps.
 
 ## Checklist
@@ -41,8 +41,8 @@
       HumanHandoffAgent, GuardrailAgent
 - [x] Orchestrator + `POST /agent/respond` returning the required structured JSON
 - [x] Deterministic guardrails: prompt injection, sensitive mutation, missing customer_id
-- [x] Tests: tools, guardrails, API (19 tests, all passing without a live DB/LLM)
-- [x] `evals/evals.json` with 10 examples
+- [x] Tests: tools, guardrails, API, MCP server (24 tests, all passing without a live DB/LLM)
+- [x] `evals/evals.json` with 11 examples
 - [x] `docs/design.md`, `docs/implementation_plan.md`, `docs/ai_usage.md`, README
 
 ## Assumptions
