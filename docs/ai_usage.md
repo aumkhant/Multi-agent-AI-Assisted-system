@@ -41,7 +41,7 @@ Claude Code (Anthropic), used interactively for this entire take-home.
   agents package contains only actual routing/specialist behavior.
 - All generated code was reviewed for correctness against the assignment's literal
   requirements (response schema fields, required agents/tools, migration shape, safety
-  test cases) before being accepted; the test suite (19 tests) was run and confirmed
+  test cases) before being accepted; the test suite (24 tests) was run and confirmed
   passing as part of that review, not just generated and left unverified.
 - Design tradeoffs called out in `docs/design.md` (deterministic vs. LLM-driven tool
   selection, rule-based vs. LLM-based guardrail review) were reasoned through and
