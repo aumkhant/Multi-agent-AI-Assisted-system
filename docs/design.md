@@ -124,8 +124,9 @@ Migrations 0001/0002 (Alembic) add `film.streaming_available` and create
 `streaming_subscription`, matching the assignment's schema spec exactly. Migration 0001
 also seeds a plausible mix of `streaming_available` values (every third film, plus
 anything titled "Alien%") so the catalog demo has realistic mixed results out of the
-box; migration 0002 seeds two subscription rows (an active one for `customer_id=1`, a
-cancelled one for `customer_id=2`) for local testing.
+box; migration 0002 seeds three subscription rows for local testing: an active Premium
+subscription for `customer_id=1`, a cancelled Basic subscription for `customer_id=2`,
+and a Standard trial subscription for `customer_id=3`.
 
 ## Guardrails and safety
 
@@ -173,5 +174,5 @@ signal, not core MVP1 scope.
   (only for Postgres) - these are the assignment's explicitly-labeled bonus signals,
   deferred out of MVP1 by design. (A local MCP server is now implemented - see
   "Tool contracts and MCP readiness" above.)
-- Eval examples are provided as data (`evals/evals.json`); an automated eval-runner
-  script is a bonus signal, not yet implemented.
+- Eval examples are provided as data (`evals/evals.json`, currently 11 scenarios); an
+  automated eval-runner script is a bonus signal, not yet implemented.

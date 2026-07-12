@@ -43,7 +43,9 @@ alembic upgrade head
 ```
 
 This adds `film.streaming_available` and creates `streaming_subscription` (seeded with
-one active subscription for `customer_id=1` and one cancelled one for `customer_id=2`).
+an active `Premium` subscription for `customer_id=1`, a cancelled `Basic`
+subscription for `customer_id=2`, and a `Standard` trial subscription for
+`customer_id=3`).
 
 ### 5. Run the app
 
@@ -101,7 +103,7 @@ app/            FastAPI app, config, DB session, orchestrator, agents, tools, gu
                 mcp_server.py (local MCP server exposing the same tools)
 alembic/        Migrations (0001 streaming_available column, 0002 streaming_subscription)
 knowledge_base/ Local markdown articles used by search_kb
-evals/          10 eval examples (input, expected intent/agent/tools, safety behavior)
+evals/          11 eval examples (input, expected intent/agent/tools, safety behavior)
 tests/          Tool, guardrail, and API tests
 docs/           design.md, implementation_plan.md, ai_usage.md
 scripts/        restore_pagila.sh
