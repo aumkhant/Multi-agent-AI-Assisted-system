@@ -35,6 +35,18 @@ Kernel around an OpenAI-compatible chat interface. That keeps the agent code pro
 agnostic and allows the same orchestration flow to run either against a hosted OpenAI
 model or a local Ollama model exposed through its OpenAI-compatible `/v1` endpoint.
 
+## Observability and tracing
+
+The application now includes an OpenTelemetry-based observability layer for LLM and tool
+execution. `app/utils/tracing.py` creates spans around the main completion path, and
+`app/utils/llm.py` enriches those spans with metadata such as the model name,
+temperature, and provider-reported token usage from the completion result.
+
+This gives the project a lightweight, vendor-neutral tracing story without requiring a
+full distributed tracing stack at MVP1. By default, spans are emitted to the console via
+OpenTelemetry's console exporter, and the same pattern can later be extended to OTLP,
+Jaeger, or other collectors.
+
 ## Why deterministic guardrails run before triage
 
 Prompt injection ("ignore previous instructions...") and sensitive account mutation
@@ -50,8 +62,8 @@ the safe behavior does not depend on the model's judgement on that turn:
 - Sensitive mutation -> escalated immediately to `HumanHandoffAgent`, which creates a
   ticket and explicitly states no account change was made.
 
-**Human handoff is explicit-only**: The orchestrator no longer uses handoff as a 
-fallback for low-confidence triage or unclassified requests. `HumanHandoffAgent` is 
+**Human handoff is explicit-only**: The orchestrator no longer uses handoff as a
+fallback for confidence-based routing or unclassified requests. `HumanHandoffAgent` is
 invoked only when:
 1. The customer explicitly asks to speak with a human.
 2. Deterministic guardrails intercept sensitive account mutations to ensure safe escalation.
@@ -153,8 +165,8 @@ Benefits:
 
 ### 4. Human handoff is explicit-only, not a fallback
 
-Previously, `HumanHandoffAgent` might have been invoked as a fallback for low-confidence
-triage or unclassified requests. The new design reserves handoff for two explicit cases:
+Previously, `HumanHandoffAgent` might have been invoked as a fallback for confidence-based
+routing or unclassified requests. The new design reserves handoff for two explicit cases:
 
 1. **Explicit user request**: "I want to speak to a human agent"
    - Triage detects intent = `human_handoff`
@@ -248,7 +260,7 @@ and a Standard trial subscription for `customer_id=3`.
   a clear "I need your customer ID" answer with `next_action=await_customer_id` instead
   of crashing or querying with a null value.
 - **Human handoff is explicit-only, except safety interception.** The orchestrator no
-  longer uses handoff as a low-confidence fallback. It is used only when the customer
+  longer uses handoff as a confidence-based fallback. It is used only when the customer
   explicitly asks for a human, or when the sensitive-mutation guardrail forces safe
   escalation.
 - **Unanswered specialist requests fall back to public web search.** If a specialist

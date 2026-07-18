@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = ""
-    triage_confidence_threshold: float = 0.5
 
 
 settings = Settings()

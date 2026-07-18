@@ -88,7 +88,18 @@ This runs over stdio. To register it with Claude Code, add to `.mcp.json`:
 }
 ```
 
-### 7. Run tests
+### 7. Observability
+
+The app now emits OpenTelemetry spans for LLM requests. The tracing layer lives in
+`app/utils/tracing.py` and is wrapped around the main completion path in
+`app/utils/llm.py`. Each span includes the model name, temperature, and provider-reported
+input/output token usage from the completion result.
+
+By default, spans are printed to the console, which is useful for local debugging. The
+same instrumentation can later be pointed at OTLP/Jaeger or another collector in a
+production environment.
+
+### 8. Run tests
 
 ```bash
 pytest

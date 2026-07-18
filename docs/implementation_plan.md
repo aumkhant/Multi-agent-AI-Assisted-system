@@ -18,12 +18,15 @@
    `get_customer_streaming_subscription`, `get_customer_rental_history`, `search_kb`,
    `search_web`) are intentionally designed without mutation operations to preserve
    safety and ownership boundaries.
-6. **Agents** - Semantic Kernel `Kernel` + `OpenAIChatCompletion` service
-   (`app/utils/llm.py`), one module per agent. Triage does LLM JSON classification with
-   a deterministic keyword fallback. Specialists call their tools through the MCP client
-   (`app/mcp_client.py::call_tool()`) rather than importing tool functions directly,
-   ensuring all tool invocations go through the standardized MCP dispatch layer. After
-   tool execution, one LLM call phrases the answer from the tool's typed JSON output.
+6. **Agents + observability** - Semantic Kernel `Kernel` + `OpenAIChatCompletion`
+   service (`app/utils/llm.py`), one module per agent. Triage does LLM JSON
+   classification with a deterministic keyword fallback. Specialists call their tools
+   through the MCP client (`app/mcp_client.py::call_tool()`) rather than importing tool
+   functions directly, ensuring all tool invocations go through the standardized MCP
+   dispatch layer. After tool execution, one LLM call phrases the answer from the
+   tool's typed JSON output. OpenTelemetry spans wrap the completion path and attach
+   model/temperature/token-usage metadata so latency and usage can be inspected during
+   development and later exported to a collector.
 7. **Guardrails** - deterministic input-side checks (`app/guardrails/checks.py`) run
    before triage; a rule-based `GuardrailAgent` review runs after the specialist answers.
 8. **Orchestrator + API** - `app/orchestrator.py` sequences the above;
@@ -78,7 +81,7 @@ The `HumanHandoffAgent` is invoked only in two scenarios:
    escalation to preserve safety. In this case, a handoff ticket is created with an
    explanation, but no account mutation is performed.
 
-The orchestrator no longer uses handoff as a low-confidence fallback or fallback for
+The orchestrator no longer uses handoff as a confidence-based fallback or fallback for
 unclassified requests. This improves the assistant's resolution rate and reduces
 unnecessary escalations.
 
@@ -101,6 +104,7 @@ unnecessary escalations.
 - [x] Deterministic guardrails: prompt injection, sensitive mutation, missing customer_id
 - [x] Tests: tools, guardrails, API, MCP server (24 tests, all passing without a live DB/LLM)
 - [x] `evals/evals.json` with 14 examples
+- [x] OpenTelemetry-based tracing for LLM operations with token-usage metadata
 - [x] `docs/design.md`, `docs/implementation_plan.md`, `docs/ai_usage.md`, README
 
 ## Assumptions
