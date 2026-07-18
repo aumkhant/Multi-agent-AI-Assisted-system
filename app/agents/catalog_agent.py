@@ -37,9 +37,14 @@ async def handle(
     user_prompt = f"Customer question: {message}\n\nCatalog search results (JSON): {result.model_dump_json()}"
     answer = await complete_chat(kernel, _SYSTEM_PROMPT, user_prompt)
 
+    # Check if the LLM indicates no relevant match was found in the catalog
+    answer_lower = answer.lower()
+    is_unanswered = "could not be found" in answer_lower or "not found" in answer_lower
+
     return AgentOutcome(
         answer=answer,
         tools_used=["search_film_catalog"],
         citations=[],
         next_action="none",
+        answered=not is_unanswered,
     )

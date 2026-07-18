@@ -33,9 +33,20 @@ async def handle(kernel: Kernel, conversation_id: str, message: str) -> AgentOut
     user_prompt = f"Customer question: {message}\n\nKB search results (JSON): {result.model_dump_json()}"
     answer = await complete_chat(kernel, _SYSTEM_PROMPT, user_prompt)
 
+    # Check if the LLM indicates no relevant answer was found in the KB
+    # This handles cases where KB search found articles but they don't match the query
+    answer_lower = answer.lower()
+    is_unanswered = (
+        "does not contain" in answer_lower
+        or "no information" in answer_lower
+        or "cannot find" in answer_lower
+        or "couldn't find" in answer_lower
+    )
+
     return AgentOutcome(
         answer=answer,
         tools_used=["search_kb"],
-        citations=[article.source for article in result.articles],
+        citations=[article.source for article in result.articles] if not is_unanswered else [],
         next_action="none",
+        answered=not is_unanswered,
     )

@@ -13,8 +13,9 @@ TriageAgent  (LLM classification -> intent, selected_agent, confidence, reason)
         │  (explicit unrelated-topic detection -> GuardrailAgent / out_of_scope)
         ▼
 Specialist agent (Catalog | Subscription | RentalHistory | Knowledge | HumanHandoff)
-        │  each specialist calls its tool through the local MCP surface, then an LLM call
-        │  phrases the answer grounded in the tool's typed output
+        │  each specialist calls its tool through MCP client (app/mcp_client.py)
+        │  MCP dispatch ensures all tool calls go through standardized registry
+        │  then an LLM call phrases the answer grounded in the tool's typed output
         │  (if unanswered -> WebSearchAgent fallback)
         ▼
 GuardrailAgent  (final review: schema, leaked-prompt check, ungrounded-claim check, length)
@@ -49,6 +50,15 @@ the safe behavior does not depend on the model's judgement on that turn:
 - Sensitive mutation -> escalated immediately to `HumanHandoffAgent`, which creates a
   ticket and explicitly states no account change was made.
 
+**Human handoff is explicit-only**: The orchestrator no longer uses handoff as a 
+fallback for low-confidence triage or unclassified requests. `HumanHandoffAgent` is 
+invoked only when:
+1. The customer explicitly asks to speak with a human.
+2. Deterministic guardrails intercept sensitive account mutations to ensure safe escalation.
+
+This improves resolution rate and prevents unnecessary human escalations, reserving 
+handoff for genuinely appropriate scenarios.
+
 There is also a lightweight deterministic out-of-scope detector in triage for obviously
 unrelated requests (for example sports/news/weather/medical/coding questions). That path
 avoids wasting a knowledge-base lookup on clearly off-domain traffic while still keeping
@@ -70,6 +80,93 @@ after any specialist responds, checking for leaked system-prompt phrasing and fo
 "grounded" intents (catalog/subscription/rental/knowledge) that somehow produced an
 answer without calling a tool - a defensive check against future regressions, not just
 a redundant one.
+
+## MCP-first agent architecture
+
+### 1. Agents invoke tools through MCP client, not direct imports
+
+Rather than importing tool functions directly (e.g., `from app.tools.catalog import
+search_film_catalog`), all specialist agents call their tools via `app/mcp_client.py`:
+
+```python
+from app.mcp_client import call_tool
+
+result = await call_tool(
+    "search_web",              # Tool name
+    conversation_id,           # Conversation context
+    {"query": message},        # Arguments
+    SearchWebOutput,           # Output schema for validation
+)
+```
+
+This design ensures:
+- **Unified dispatch**: All tool invocations go through `app/mcp_tools.py::dispatch_tool_call()`,
+  which routes named tool calls to handlers.
+- **Shared contracts**: Both in-app agents and the local MCP server (`app/mcp_server.py`)
+  invoke the same tools with the same input/output schemas.
+- **Testability**: Tool calls can be mocked at the dispatch layer, enabling agent testing
+  without real tool execution.
+- **Observability**: Logging and lifecycle management are centralized.
+
+### 2. Full CRUD operations on owned resources only
+
+The assistant owns and manages only one resource: `handoff_ticket`. This resource has
+complete CRUD coverage:
+- `create_handoff_ticket` - Create a new support ticket
+- `get_handoff_ticket` - Retrieve ticket by ID
+- `list_handoff_tickets` - List all tickets for a conversation
+- `update_handoff_ticket` - Modify ticket status/notes
+- `delete_handoff_ticket` - Remove a ticket
+
+All other tools are intentionally read-only:
+- `search_film_catalog` - Queries external catalog (Pagila schema)
+- `get_customer_streaming_subscription` - Reads account data
+- `get_customer_rental_history` - Reads rental records
+- `search_kb` - Reads curated knowledge base articles
+- `search_web` - Reads public web search results
+
+Read-only tools preserve safety boundaries and ownership clarity. Forcing mutations onto
+external systems (catalog, account data) or curated content (knowledge base) would either
+violate guardrails or blur operational responsibilities. This design satisfies the CRUD
+requirement while respecting trust and authorization boundaries.
+
+### 3. Unanswered queries fall back to web search
+
+When a specialist agent cannot answer from its source (empty search results, no matching
+records, etc.), the orchestrator transparently replaces that response with
+`WebSearchAgent`'s response:
+
+```python
+if not outcome.answered:
+    outcome = await web_search_agent.handle(kernel, conversation_id, message)
+    # outcome.selected_agent = "WebSearchAgent"
+    # outcome.intent = original_triage_intent  # preserved for traceability
+```
+
+Benefits:
+- **No unanswered questions**: Every query gets an attempt at resolution.
+- **Grounded responses**: Web search results are real public data, not hallucinations.
+- **Traceability**: Original intent is preserved while `selected_agent` indicates the
+  fallback path taken.
+- **Utility**: Assistant can answer product-adjacent questions ("Where can I watch X?"
+  -> web search if not in catalog) without hallucinating internal data.
+
+### 4. Human handoff is explicit-only, not a fallback
+
+Previously, `HumanHandoffAgent` might have been invoked as a fallback for low-confidence
+triage or unclassified requests. The new design reserves handoff for two explicit cases:
+
+1. **Explicit user request**: "I want to speak to a human agent"
+   - Triage detects intent = `human_handoff`
+   - Orchestrator calls `HumanHandoffAgent`, which creates a ticket and informs the user
+   
+2. **Safety interception**: Sensitive mutation guardrails force escalation
+   - Deterministic check in orchestrator detects sensitive request
+   - Escalates to `HumanHandoffAgent` with reason = `sensitive_account_mutation_request`
+   - Ticket is created with full context; no account change is performed
+
+This improves the assistant's resolution rate by eliminating unnecessary escalations,
+while ensuring truly problematic cases get appropriate human review.
 
 ## Agents
 
@@ -176,7 +273,10 @@ signal, not core MVP1 scope.
 
 ## Known limitations / tradeoffs (MVP1)
 
-- Tool selection is deterministic per-agent, not LLM function-calling - see above for why.
+- Tool selection is deterministic per-agent (agents invoke named tools through the MCP
+  client rather than using LLM function-calling). This design is intentional, not a
+  limitation - see "MCP-first agent architecture" above for why deterministic routing is
+  preferred.
 - `search_film_catalog` uses `ILIKE` substring search with a simple stopword-based query
   extractor (`app/utils/query_extraction.py`); it is not semantic search and can miss
   titles phrased very differently from the message.
@@ -185,7 +285,7 @@ signal, not core MVP1 scope.
   harder-to-test LLM-judged step. An LLM-based review pass is a natural next iteration.
 - No streaming responses, no tracing/cost logging, no Docker Compose for the app itself
   (only for Postgres) - these are the assignment's explicitly-labeled bonus signals,
-  deferred out of MVP1 by design. (A local MCP server is now implemented - see
-  "Tool contracts and MCP readiness" above.)
-- Eval examples are provided as data (`evals/evals.json`, currently 11 scenarios); an
+  deferred out of MVP1 by design. A local MCP server is now implemented to expose tools
+  over stdio.
+- Eval examples are provided as data (`evals/evals.json`, currently 14 scenarios); an
   automated eval-runner script is a bonus signal, not yet implemented.

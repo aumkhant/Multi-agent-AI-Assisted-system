@@ -11,12 +11,19 @@
 4. **Tools** - typed Pydantic input/output per tool, `ToolMetadata` (MCP-ready contract),
    `logged_tool_call` for structured logging. DB tools use SQLAlchemy Core with
    parameterized `text()` queries against the existing Pagila schema.
-5. **Mock tools** - `search_kb` over `knowledge_base/*.md`, `create_handoff_ticket`
-   in-memory.
+5. **Mock tools** - `search_kb` over `knowledge_base/*.md`; `handoff_ticket` resource with
+   full CRUD operations (`create_handoff_ticket`, `get_handoff_ticket`,
+   `list_handoff_tickets`, `update_handoff_ticket`, `delete_handoff_ticket`) implemented
+   as an in-memory store. Read-only tools (`search_film_catalog`,
+   `get_customer_streaming_subscription`, `get_customer_rental_history`, `search_kb`,
+   `search_web`) are intentionally designed without mutation operations to preserve
+   safety and ownership boundaries.
 6. **Agents** - Semantic Kernel `Kernel` + `OpenAIChatCompletion` service
    (`app/utils/llm.py`), one module per agent. Triage does LLM JSON classification with
-   a deterministic keyword fallback. Specialists call their tool directly, then one LLM
-   call to phrase the answer from the tool's JSON output.
+   a deterministic keyword fallback. Specialists call their tools through the MCP client
+   (`app/mcp_client.py::call_tool()`) rather than importing tool functions directly,
+   ensuring all tool invocations go through the standardized MCP dispatch layer. After
+   tool execution, one LLM call phrases the answer from the tool's typed JSON output.
 7. **Guardrails** - deterministic input-side checks (`app/guardrails/checks.py`) run
    before triage; a rule-based `GuardrailAgent` review runs after the specialist answers.
 8. **Orchestrator + API** - `app/orchestrator.py` sequences the above;
@@ -25,9 +32,55 @@
    tests (pure functions), API tests (FastAPI `TestClient`, kernel dependency overridden
    so tests don't need a live OpenAI key; safety-critical paths are exercised
    end-to-end since they don't require the LLM).
-10. **Evals** - `evals/evals.json`, 11 examples covering every required eval-table row
-    plus extra edge cases (catalog not-found, out-of-scope, harmful-content request).
+10. **Evals** - `evals/evals.json`, 14 examples covering every required eval-table row
+    plus web search fallback scenarios (KB search miss, catalog miss, product-adjacent
+    queries), and extra edge cases.
 11. **Docs** - this plan, `docs/design.md`, `docs/ai_usage.md`, README setup steps.
+
+## Key architectural decisions
+
+### 1. Agents invoke tools through MCP client, not direct imports
+
+All specialist agents (`CatalogAgent`, `SubscriptionAgent`, `RentalHistoryAgent`,
+`KnowledgeAgent`, `WebSearchAgent`) invoke their tools via `app/mcp_client.py::call_tool()`
+rather than importing and calling the tool functions directly. This ensures:
+- Unified tool dispatch path aligned with MCP contracts (`app/mcp_tools.py`)
+- Centralized logging and lifecycle management
+- Testability: tool calls can be mocked at the dispatch layer
+- Future extensibility: local MCP server (`app/mcp_server.py`) and in-app agents share
+  the same registry and contracts
+
+### 2. Full CRUD coverage for operational resources
+
+Only the `handoff_ticket` resource (owned and managed by the assistant) has full CRUD
+operations: `create_handoff_ticket`, `get_handoff_ticket`, `list_handoff_tickets`,
+`update_handoff_ticket`, `delete_handoff_ticket`. All other tools are intentionally
+read-only (`search_film_catalog`, `get_customer_streaming_subscription`,
+`get_customer_rental_history`, `search_kb`, `search_web`) because they represent either
+source-of-truth external systems (catalog, subscriptions, customer account data) or
+curated content (knowledge base). This preserves safety and ownership boundaries while
+meeting the CRUD requirement.
+
+### 3. Unanswered queries fall back to web search
+
+If a specialist agent cannot answer a query from its first-party data source (e.g., a
+film title is not in the catalog, no relevant KB article exists), the orchestrator
+replaces the specialist's response with `WebSearchAgent`'s response. The response
+retains the original `intent` for traceability but switches `selected_agent` to
+`WebSearchAgent`. This ensures no unanswered questions and increases assistant utility
+without hallucinating or making up product information.
+
+### 4. Human handoff only for explicit requests, not as fallback
+
+The `HumanHandoffAgent` is invoked only in two scenarios:
+1. **Explicit user request**: Customer explicitly asks to speak with a human agent.
+2. **Safety interception**: Deterministic guardrails (sensitive account mutation) force
+   escalation to preserve safety. In this case, a handoff ticket is created with an
+   explanation, but no account mutation is performed.
+
+The orchestrator no longer uses handoff as a low-confidence fallback or fallback for
+unclassified requests. This improves the assistant's resolution rate and reduces
+unnecessary escalations.
 
 ## Checklist
 
@@ -35,14 +88,19 @@
 - [x] Docker Compose Postgres + Pagila restore script
 - [x] Alembic migrations 0001/0002 with seed data
 - [x] `search_film_catalog`, `get_customer_streaming_subscription`,
-      `get_customer_rental_history` (typed, MCP metadata, logged)
-- [x] `search_kb`, `create_handoff_ticket` (typed, MCP metadata, logged)
+      `get_customer_rental_history` (typed, MCP metadata, logged, read-only)
+- [x] `search_kb`, `search_web` (typed, MCP metadata, logged, read-only)
+- [x] `handoff_ticket` with full CRUD (typed, MCP metadata, logged)
 - [x] TriageAgent, CatalogAgent, SubscriptionAgent, RentalHistoryAgent, KnowledgeAgent,
-      HumanHandoffAgent, GuardrailAgent
+      HumanHandoffAgent, WebSearchAgent, GuardrailAgent
+- [x] All specialist agents invoke tools through MCP client (`app/mcp_client.py::call_tool()`)
+      rather than direct imports
+- [x] Orchestrator implements web search fallback when specialist agents cannot answer
+- [x] Orchestrator implements explicit-only handoff (no fallback escalation)
 - [x] Orchestrator + `POST /agent/respond` returning the required structured JSON
 - [x] Deterministic guardrails: prompt injection, sensitive mutation, missing customer_id
 - [x] Tests: tools, guardrails, API, MCP server (24 tests, all passing without a live DB/LLM)
-- [x] `evals/evals.json` with 11 examples
+- [x] `evals/evals.json` with 14 examples
 - [x] `docs/design.md`, `docs/implementation_plan.md`, `docs/ai_usage.md`, README
 
 ## Assumptions

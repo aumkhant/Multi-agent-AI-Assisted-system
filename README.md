@@ -112,3 +112,56 @@ tests/          Tool, guardrail, and API tests
 docs/           design.md, implementation_plan.md, ai_usage.md
 scripts/        restore_pagila.sh
 ```
+
+## Agents
+
+### Web Search Agent
+
+**Purpose:** The Web Search Agent handles queries by searching the public web and synthesizing results into answers. It uses the `search_web` tool to retrieve real-time information from the internet, then leverages an LLM to answer the user's question based on those results while mentioning the most relevant source.
+
+**When Invoked:** The Web Search Agent is currently available as a specialized agent (`app/agents/web_search_agent.py`) that can be called when extended functionality is needed. In the current triage flow, out-of-scope requests are handled by the GuardrailAgent, which politely redirects users to supported topics.
+
+**Implementation Details:**
+
+1. **Agent Handler** (`app/agents/web_search_agent.py`):
+   - Accepts a user message and conversation ID
+   - Calls the MCP client to execute the `search_web` tool
+   - Processes search results through an LLM prompt that synthesizes information
+   - Returns structured output with the answer, tools used, citations (URLs), and confidence metadata
+
+2. **MCP Client Integration** (`app/mcp_client.py`):
+   - The Web Search Agent uses `call_tool()` from the MCP client module to invoke tools
+   - `call_tool(tool_name, conversation_id, arguments, output_model)` abstracts tool invocation:
+     - `tool_name`: The tool to call (e.g., `"search_web"`)
+     - `conversation_id`: Tracks the conversation context
+     - `arguments`: A dictionary of tool parameters (e.g., `{"query": "..."}`)
+     - `output_model`: The Pydantic schema for response validation
+   - The MCP client dispatches the request to `dispatch_tool_call()` in `app/mcp_tools.py`
+
+3. **Tool Dispatch Flow** (`app/mcp_tools.py`):
+   - `dispatch_tool_call()` routes the tool name to the appropriate handler function
+   - For `search_web`, it calls `app/tools/web_search.py::search_web()`
+   - The tool executes the public web search (via DuckDuckGo instant answer API + HTML fallback)
+   - Returns structured results with title, snippet, and source URL for each match
+
+4. **Result Processing**:
+   - If search results are empty, the agent returns a graceful "couldn't find a reliable answer" response
+   - If results exist, they are passed to an LLM with a system prompt that ensures answers are grounded in the search results
+   - The final response includes citations (URLs) to support transparency and traceability
+
+**Example Flow:**
+```
+User Query → Web Search Agent → MCP Client (call_tool)
+  → dispatch_tool_call() → search_web() tool
+  → DuckDuckGo + HTML search results
+  → MCP Client returns SearchWebOutput
+  → LLM synthesizes answer from results
+  → AgentOutcome with answer + citations
+```
+
+**Tool Metadata** (`app/tools/web_search.py`):
+- **Name:** `search_web`
+- **Input:** `SearchWebInput` (contains a `query: str` field)
+- **Output:** `SearchWebOutput` (contains a `results: list[WebSearchResult]` with title, snippet, url)
+- **Backed by:** DuckDuckGo instant answer API with HTML search results fallback
+- **Auth:** None (public web search only)
