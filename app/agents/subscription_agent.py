@@ -1,10 +1,9 @@
 from semantic_kernel import Kernel
-from sqlalchemy.orm import Session
 
 from app.agents.base import AgentOutcome
-from app.schemas import GetCustomerStreamingSubscriptionInput
+from app.mcp_client import call_tool
+from app.schemas import GetCustomerStreamingSubscriptionOutput
 from app.tools.base import ToolError
-from app.tools.subscription import get_customer_streaming_subscription
 from app.utils.llm import complete_chat
 
 _SYSTEM_PROMPT = """You are SubscriptionAgent for a streaming and rental platform. You are given the customer's subscription record as JSON. Answer using ONLY that data - plan name,
@@ -13,7 +12,7 @@ status, renewal date, and auto-renew. Keep the answer to 1-3 sentences, customer
 
 
 async def handle(
-    kernel: Kernel, session: Session, conversation_id: str, message: str, customer_id: int | None
+    kernel: Kernel, conversation_id: str, message: str, customer_id: int | None
 ) -> AgentOutcome:
     if customer_id is None:
         return AgentOutcome(
@@ -24,15 +23,19 @@ async def handle(
         )
 
     try:
-        result = get_customer_streaming_subscription(
-            session, conversation_id, GetCustomerStreamingSubscriptionInput(customer_id=customer_id)
+        result = await call_tool(
+            "get_customer_streaming_subscription",
+            conversation_id,
+            {"customer_id": customer_id},
+            GetCustomerStreamingSubscriptionOutput,
         )
     except ToolError:
         return AgentOutcome(
-            answer="I couldn't find an active streaming subscription on your account.",
+            answer="I couldn't find a confirmed subscription record for your account.",
             tools_used=["get_customer_streaming_subscription"],
             citations=[],
             next_action="none",
+            answered=False,
         )
 
     user_prompt = f"Customer question: {message}\n\nSubscription record (JSON): {result.model_dump_json()}"

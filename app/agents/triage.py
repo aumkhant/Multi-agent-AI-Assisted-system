@@ -19,7 +19,7 @@ Valid (intent, selected_agent) pairs:
 - ("subscription_question", "SubscriptionAgent") - questions about subscription status, plan, renewal, auto-renew.
 - ("rental_history", "RentalHistoryAgent") - questions about what the customer has rented recently.
 - ("knowledge_question", "KnowledgeAgent") - general how-do-I support questions (payment method, account settings, troubleshooting).
-- ("human_handoff", "HumanHandoffAgent") - explicit requests to talk to a human agent, or if the request is unclear and you are not confident which agent to route to.
+- ("human_handoff", "HumanHandoffAgent") - only explicit requests to talk to a human agent.
 - ("out_of_scope", "GuardrailAgent") - requests unrelated to this streaming/rental support product. This includes, but is not limited to, general news, sports, weather, politics, coding, medical, legal, finance, or travel questions.
 
 The first five intents only apply to requests that clearly concern this streaming/rental support
@@ -28,7 +28,8 @@ for this service). Do not stretch "knowledge_question" to cover generic requests
 resemble a how-to question - if the topic itself is unrelated to this product, choose "out_of_scope"
 instead, even if it is not one of the example categories listed above.
 
-If you are not confident, still return your best guess but set a low confidence score.
+If you are not confident, still return your best in-domain or out-of-scope guess, but do
+not choose human_handoff unless the user explicitly asks for a human.
 """
 
 _INTENT_AGENT: dict[Intent, AgentName] = {
@@ -105,11 +106,18 @@ def _deterministic_fallback(message: str) -> TriageResult:
                 confidence=0.4,
                 reason="Deterministic keyword fallback (LLM triage unavailable or unparsable).",
             )
+    if _DOMAIN_RE.search(message):
+        return TriageResult(
+            intent="knowledge_question",
+            selected_agent="KnowledgeAgent",
+            confidence=0.2,
+            reason="Deterministic in-domain fallback to the knowledge agent.",
+        )
     return TriageResult(
-        intent="human_handoff",
-        selected_agent="HumanHandoffAgent",
+        intent="out_of_scope",
+        selected_agent="GuardrailAgent",
         confidence=0.2,
-        reason="No keyword match; escalating to a human as a safe default.",
+        reason="No in-domain signal found; treating as out of scope.",
     )
 
 

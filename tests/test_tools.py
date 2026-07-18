@@ -5,13 +5,22 @@ import pytest
 
 from app.schemas import (
     CreateHandoffTicketInput,
+    DeleteHandoffTicketInput,
     GetCustomerStreamingSubscriptionInput,
+    GetHandoffTicketInput,
     SearchFilmCatalogInput,
     SearchKbInput,
+    UpdateHandoffTicketInput,
 )
 from app.tools.base import ToolError
 from app.tools.catalog import search_film_catalog
-from app.tools.handoff import create_handoff_ticket, list_tickets
+from app.tools.handoff import (
+    create_handoff_ticket,
+    delete_handoff_ticket,
+    get_handoff_ticket,
+    list_tickets,
+    update_handoff_ticket,
+)
 from app.tools.knowledge_base import search_kb
 from app.tools.subscription import get_customer_streaming_subscription
 
@@ -96,3 +105,25 @@ def test_create_handoff_ticket_creates_a_ticket():
     assert result.status == "open"
     assert result.ticket_id.startswith("HAND-")
     assert len(list_tickets()) == before + 1
+
+
+def test_handoff_ticket_crud_round_trip():
+    created = create_handoff_ticket(
+        "conv-2", CreateHandoffTicketInput(summary="billing concern", reason="explicit_handoff")
+    )
+    fetched = get_handoff_ticket("conv-2", GetHandoffTicketInput(ticket_id=created.ticket_id))
+    assert fetched.summary == "billing concern"
+
+    updated = update_handoff_ticket(
+        "conv-2",
+        UpdateHandoffTicketInput(ticket_id=created.ticket_id, status="closed", summary="resolved concern"),
+    )
+    assert updated.status == "closed"
+    assert updated.summary == "resolved concern"
+
+    deleted = delete_handoff_ticket("conv-2", DeleteHandoffTicketInput(ticket_id=created.ticket_id))
+    assert deleted.deleted is True
+
+    with pytest.raises(ToolError) as exc_info:
+        get_handoff_ticket("conv-2", GetHandoffTicketInput(ticket_id=created.ticket_id))
+    assert exc_info.value.code == "not_found"

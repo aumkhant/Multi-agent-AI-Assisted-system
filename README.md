@@ -35,6 +35,10 @@ cp .env.example .env
 # assignment's LLM key note - defaults to gpt-4o-mini)
 ```
 
+If your network intercepts HTTPS traffic and Python reports a certificate verification
+error while calling `search_web`, set `WEB_SEARCH_CA_BUNDLE` in `.env` to your trusted
+CA bundle. On this macOS setup, `/etc/ssl/cert.pem` is the system bundle.
+
 ### 4. Run migrations
 
 ```bash

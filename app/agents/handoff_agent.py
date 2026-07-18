@@ -1,13 +1,16 @@
 from app.agents.base import AgentOutcome
-from app.schemas import CreateHandoffTicketInput
-from app.tools.handoff import create_handoff_ticket
+from app.mcp_client import call_tool
+from app.schemas import CreateHandoffTicketOutput
 
 
-def handle(conversation_id: str, message: str, reason: str) -> AgentOutcome:
+async def handle(conversation_id: str, message: str, reason: str) -> AgentOutcome:
     """Creates a handoff ticket and lets the customer know a human will follow up.
     Never performs an account mutation itself - only the human agent does."""
-    result = create_handoff_ticket(
-        conversation_id, CreateHandoffTicketInput(summary=message, reason=reason)
+    result = await call_tool(
+        "create_handoff_ticket",
+        conversation_id,
+        {"summary": message, "reason": reason},
+        CreateHandoffTicketOutput,
     )
 
     answer = (

@@ -19,6 +19,7 @@ AgentName = Literal[
     "SubscriptionAgent",
     "RentalHistoryAgent",
     "KnowledgeAgent",
+    "WebSearchAgent",
     "HumanHandoffAgent",
     "GuardrailAgent",
 ]
@@ -115,5 +116,67 @@ class CreateHandoffTicketInput(BaseModel):
 
 class CreateHandoffTicketOutput(BaseModel):
     ticket_id: str
+    summary: str
+    reason: str
     status: str
     created_at: datetime
+
+
+class GetHandoffTicketInput(BaseModel):
+    ticket_id: str
+
+
+class HandoffTicketRecord(BaseModel):
+    ticket_id: str
+    conversation_id: str
+    summary: str
+    reason: str
+    status: str
+    created_at: datetime
+
+
+class GetHandoffTicketOutput(HandoffTicketRecord):
+    pass
+
+
+class ListHandoffTicketsInput(BaseModel):
+    status: str | None = None
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class ListHandoffTicketsOutput(BaseModel):
+    tickets: list[HandoffTicketRecord]
+
+
+class UpdateHandoffTicketInput(BaseModel):
+    ticket_id: str
+    summary: str | None = None
+    reason: str | None = None
+    status: str | None = None
+
+
+class UpdateHandoffTicketOutput(HandoffTicketRecord):
+    pass
+
+
+class DeleteHandoffTicketInput(BaseModel):
+    ticket_id: str
+
+
+class DeleteHandoffTicketOutput(BaseModel):
+    ticket_id: str
+    deleted: bool
+
+
+class WebSearchResult(BaseModel):
+    title: str
+    snippet: str
+    url: str
+
+
+class SearchWebInput(BaseModel):
+    query: str
+
+
+class SearchWebOutput(BaseModel):
+    results: list[WebSearchResult]

@@ -1,87 +1,208 @@
-"""Local MCP server exposing this app's tools (catalog, KB, subscription, rental
-history, handoff) so an MCP client (e.g. Claude Desktop/Code) can call them directly,
-independent of the FastAPI orchestrator. Each tool below is a thin wrapper around the
-same functions used by the agents in app/tools/ - same DB queries, same ToolMetadata
-contracts, just a different entry point.
+"""Local MCP server exposing this app's tools over a shared registry."""
 
-Run with: python -m app.mcp_server
-"""
+from dataclasses import dataclass
+from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from app.mcp_tools import dispatch_tool_call
 
-from app.db import get_session
-from app.schemas import (
-    CreateHandoffTicketInput,
-    GetCustomerRentalHistoryInput,
-    GetCustomerStreamingSubscriptionInput,
-    SearchFilmCatalogInput,
-    SearchKbInput,
-)
-from app.tools.catalog import METADATA as CATALOG_METADATA
-from app.tools.catalog import search_film_catalog
-from app.tools.handoff import METADATA as HANDOFF_METADATA
-from app.tools.handoff import create_handoff_ticket
-from app.tools.knowledge_base import METADATA as KB_METADATA
-from app.tools.knowledge_base import search_kb
-from app.tools.rental_history import METADATA as RENTAL_HISTORY_METADATA
-from app.tools.rental_history import get_customer_rental_history
-from app.tools.subscription import METADATA as SUBSCRIPTION_METADATA
-from app.tools.subscription import get_customer_streaming_subscription
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    @dataclass
+    class _ToolInfo:
+        name: str
+        description: str
+        inputSchema: dict[str, Any]
 
-_CONVERSATION_ID = "mcp-server"
+
+    class FastMCP:  # pragma: no cover - shim used only when the external package is unavailable
+        def __init__(self, name: str, instructions: str):
+            self.name = name
+            self.instructions = instructions
+            self._tools: list[_ToolInfo] = []
+
+        def tool(self, name: str, description: str):
+            def decorator(func):
+                input_schema = getattr(func, "__input_schema__", {"type": "object", "properties": {}, "required": []})
+                self._tools.append(_ToolInfo(name=name, description=description, inputSchema=input_schema))
+                return func
+
+            return decorator
+
+        async def list_tools(self) -> list[_ToolInfo]:
+            return list(self._tools)
+
+        def run(self, transport: str = "stdio") -> None:
+            raise RuntimeError("The mcp package is not installed, so the local MCP server cannot run.")
+
+
+def _attach_schema(schema: dict[str, Any]):
+    def decorator(func):
+        func.__input_schema__ = schema
+        return func
+
+    return decorator
+
 
 mcp = FastMCP(
     "support-assistant-tools",
     instructions="Read/lookup tools for a streaming and rental support assistant "
-    "(Pagila-backed film catalog, knowledge base, subscriptions, rental history, and "
-    "human handoff tickets).",
+    "(Pagila-backed film catalog, knowledge base, subscriptions, rental history, handoff "
+    "ticket CRUD, and public web search fallback).",
 )
 
 
-@mcp.tool(name=CATALOG_METADATA.name, description=CATALOG_METADATA.description)
+@mcp.tool(name="search_film_catalog", description="Search the film catalog by title and return category, rating, rental rate, and streaming availability.")
+@_attach_schema(
+    {
+        "type": "object",
+        "properties": {"query": {"title": "Query", "type": "string"}},
+        "required": ["query"],
+    }
+)
 def search_catalog(query: str) -> dict:
-    session = get_session()
-    try:
-        result = search_film_catalog(session, _CONVERSATION_ID, SearchFilmCatalogInput(query=query))
-    finally:
-        session.close()
-    return result.model_dump()
+    return dispatch_tool_call("search_film_catalog", "mcp-server", {"query": query})
 
 
-@mcp.tool(name=SUBSCRIPTION_METADATA.name, description=SUBSCRIPTION_METADATA.description)
+@mcp.tool(name="get_customer_streaming_subscription", description="Look up a customer's streaming subscription status, plan, renewal date, and auto-renew flag.")
+@_attach_schema(
+    {
+        "type": "object",
+        "properties": {"customer_id": {"title": "Customer Id", "type": "integer"}},
+        "required": ["customer_id"],
+    }
+)
 def get_streaming_subscription(customer_id: int) -> dict:
-    session = get_session()
-    try:
-        result = get_customer_streaming_subscription(
-            session, _CONVERSATION_ID, GetCustomerStreamingSubscriptionInput(customer_id=customer_id)
-        )
-    finally:
-        session.close()
-    return result.model_dump()
+    return dispatch_tool_call("get_customer_streaming_subscription", "mcp-server", {"customer_id": customer_id})
 
 
-@mcp.tool(name=RENTAL_HISTORY_METADATA.name, description=RENTAL_HISTORY_METADATA.description)
+@mcp.tool(name="get_customer_rental_history", description="Return a customer's most recent rentals (film title, rental date, return date).")
+@_attach_schema(
+    {
+        "type": "object",
+        "properties": {
+            "customer_id": {"title": "Customer Id", "type": "integer"},
+            "limit": {"title": "Limit", "type": "integer", "default": 5},
+        },
+        "required": ["customer_id"],
+    }
+)
 def get_rental_history(customer_id: int, limit: int = 5) -> dict:
-    session = get_session()
-    try:
-        result = get_customer_rental_history(
-            session, _CONVERSATION_ID, GetCustomerRentalHistoryInput(customer_id=customer_id, limit=limit)
-        )
-    finally:
-        session.close()
-    return result.model_dump()
+    return dispatch_tool_call(
+        "get_customer_rental_history",
+        "mcp-server",
+        {"customer_id": customer_id, "limit": limit},
+    )
 
 
-@mcp.tool(name=KB_METADATA.name, description=KB_METADATA.description)
+@mcp.tool(name="search_kb", description="Search local knowledge base articles for support topics and return matching articles with source references.")
+@_attach_schema(
+    {
+        "type": "object",
+        "properties": {"query": {"title": "Query", "type": "string"}},
+        "required": ["query"],
+    }
+)
 def search_knowledge_base(query: str) -> dict:
-    result = search_kb(_CONVERSATION_ID, SearchKbInput(query=query))
-    return result.model_dump()
+    return dispatch_tool_call("search_kb", "mcp-server", {"query": query})
 
 
-@mcp.tool(name=HANDOFF_METADATA.name, description=HANDOFF_METADATA.description)
+@mcp.tool(name="create_handoff_ticket", description="Simulate creating an escalation ticket for a human support agent. Does not perform any account mutation.")
+@_attach_schema(
+    {
+        "type": "object",
+        "properties": {
+            "summary": {"title": "Summary", "type": "string"},
+            "reason": {"title": "Reason", "type": "string"},
+        },
+        "required": ["summary", "reason"],
+    }
+)
 def create_ticket(summary: str, reason: str) -> dict:
-    result = create_handoff_ticket(_CONVERSATION_ID, CreateHandoffTicketInput(summary=summary, reason=reason))
-    return result.model_dump()
+    return dispatch_tool_call("create_handoff_ticket", "mcp-server", {"summary": summary, "reason": reason})
+
+
+@mcp.tool(name="get_handoff_ticket", description="Get a single human handoff ticket by ticket ID.")
+@_attach_schema(
+    {
+        "type": "object",
+        "properties": {"ticket_id": {"title": "Ticket Id", "type": "string"}},
+        "required": ["ticket_id"],
+    }
+)
+def get_ticket(ticket_id: str) -> dict:
+    return dispatch_tool_call("get_handoff_ticket", "mcp-server", {"ticket_id": ticket_id})
+
+
+@mcp.tool(name="list_handoff_tickets", description="List handoff tickets, optionally filtered by status.")
+@_attach_schema(
+    {
+        "type": "object",
+        "properties": {
+            "status": {"title": "Status", "type": "string"},
+            "limit": {"title": "Limit", "type": "integer", "default": 20},
+        },
+        "required": [],
+    }
+)
+def list_ticket_records(status: str | None = None, limit: int = 20) -> dict:
+    payload: dict[str, Any] = {"limit": limit}
+    if status is not None:
+        payload["status"] = status
+    return dispatch_tool_call("list_handoff_tickets", "mcp-server", payload)
+
+
+@mcp.tool(name="update_handoff_ticket", description="Update a handoff ticket's summary, reason, and/or status.")
+@_attach_schema(
+    {
+        "type": "object",
+        "properties": {
+            "ticket_id": {"title": "Ticket Id", "type": "string"},
+            "summary": {"title": "Summary", "type": "string"},
+            "reason": {"title": "Reason", "type": "string"},
+            "status": {"title": "Status", "type": "string"},
+        },
+        "required": ["ticket_id"],
+    }
+)
+def update_ticket(
+    ticket_id: str,
+    summary: str | None = None,
+    reason: str | None = None,
+    status: str | None = None,
+) -> dict:
+    payload: dict[str, Any] = {"ticket_id": ticket_id}
+    if summary is not None:
+        payload["summary"] = summary
+    if reason is not None:
+        payload["reason"] = reason
+    if status is not None:
+        payload["status"] = status
+    return dispatch_tool_call("update_handoff_ticket", "mcp-server", payload)
+
+
+@mcp.tool(name="delete_handoff_ticket", description="Delete a handoff ticket by ticket ID.")
+@_attach_schema(
+    {
+        "type": "object",
+        "properties": {"ticket_id": {"title": "Ticket Id", "type": "string"}},
+        "required": ["ticket_id"],
+    }
+)
+def delete_ticket(ticket_id: str) -> dict:
+    return dispatch_tool_call("delete_handoff_ticket", "mcp-server", {"ticket_id": ticket_id})
+
+
+@mcp.tool(name="search_web", description="Search the public web for a query and return short snippets with source URLs.")
+@_attach_schema(
+    {
+        "type": "object",
+        "properties": {"query": {"title": "Query", "type": "string"}},
+        "required": ["query"],
+    }
+)
+def search_public_web(query: str) -> dict:
+    return dispatch_tool_call("search_web", "mcp-server", {"query": query})
 
 
 if __name__ == "__main__":

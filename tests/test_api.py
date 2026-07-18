@@ -3,14 +3,19 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from app.agents.base import AgentOutcome
 from app.main import app, get_kernel
 
 client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def _override_kernel():
+def _override_kernel(monkeypatch):
+    async def safe_guardrail_check(*args, **kwargs):
+        return "safe"
+
     app.dependency_overrides[get_kernel] = lambda: MagicMock()
+    monkeypatch.setattr("app.orchestrator.complete_chat", safe_guardrail_check)
     yield
     app.dependency_overrides.clear()
 
@@ -141,3 +146,92 @@ def test_other_major_out_of_scope_request_is_rejected_without_tool_use():
     assert body["selected_agent"] == "GuardrailAgent"
     assert body["tools_used"] == []
 
+
+def test_low_confidence_specialist_route_does_not_fallback_to_handoff(monkeypatch):
+    async def fake_classify(kernel, message):
+        from app.agents.triage import TriageResult
+
+        return TriageResult(
+            intent="knowledge_question",
+            selected_agent="KnowledgeAgent",
+            confidence=0.1,
+            reason="low confidence but still in domain",
+        )
+
+    async def fake_knowledge_handle(kernel, conversation_id, message):
+        return AgentOutcome(
+            answer="I couldn't verify that from the knowledge base.",
+            tools_used=["search_kb"],
+            citations=[],
+            next_action="none",
+            answered=False,
+        )
+
+    async def fake_web_handle(kernel, conversation_id, message):
+        return AgentOutcome(
+            answer="Here is the public-web fallback answer.",
+            tools_used=["search_web"],
+            citations=["https://example.com"],
+            next_action="none",
+            answered=True,
+        )
+
+    monkeypatch.setattr("app.orchestrator.triage.classify", fake_classify)
+    monkeypatch.setattr("app.orchestrator.knowledge_agent.handle", fake_knowledge_handle)
+    monkeypatch.setattr("app.orchestrator.web_search_agent.handle", fake_web_handle)
+
+    response = client.post(
+        "/agent/respond",
+        json={"customer_id": 1, "conversation_id": "conv_low_conf", "message": "How do I fix this issue?"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["selected_agent"] == "WebSearchAgent"
+    assert body["next_action"] == "none"
+    assert "create_handoff_ticket" not in body["tools_used"]
+    assert "search_web" in body["tools_used"]
+    assert body["answer"] == "Here is the public-web fallback answer."
+
+
+def test_specialist_miss_returns_web_agent_response_when_web_has_no_results(monkeypatch):
+    async def fake_classify(kernel, message):
+        from app.agents.triage import TriageResult
+
+        return TriageResult(
+            intent="catalog_search",
+            selected_agent="CatalogAgent",
+            confidence=0.9,
+            reason="catalog availability question",
+        )
+
+    async def fake_catalog_handle(kernel, conversation_id, message):
+        return AgentOutcome(
+            answer="I couldn't find a confirmed answer for that in our catalog data.",
+            tools_used=["search_film_catalog"],
+            citations=[],
+            next_action="none",
+            answered=False,
+        )
+
+    async def fake_web_handle(kernel, conversation_id, message):
+        return AgentOutcome(
+            answer="I couldn't find a reliable public-web answer for that.",
+            tools_used=["search_web"],
+            citations=[],
+            next_action="none",
+            answered=False,
+        )
+
+    monkeypatch.setattr("app.orchestrator.triage.classify", fake_classify)
+    monkeypatch.setattr("app.orchestrator.catalog_agent.handle", fake_catalog_handle)
+    monkeypatch.setattr("app.orchestrator.web_search_agent.handle", fake_web_handle)
+
+    response = client.post(
+        "/agent/respond",
+        json={"customer_id": 1, "conversation_id": "conv_web_empty", "message": "Where can I watch this?"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["selected_agent"] == "WebSearchAgent"
+    assert body["answer"] == "I couldn't find a reliable public-web answer for that."
+    assert body["tools_used"] == ["search_film_catalog", "search_web"]

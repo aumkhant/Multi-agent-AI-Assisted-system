@@ -24,12 +24,11 @@ def review(
 
     if intent in _GROUNDED_INTENTS and not tools_used and next_action == "none":
         return (
-            "I don't have enough verified information to answer that confidently. Let me "
-            "connect you with a human agent instead.",
+            "I don't have enough verified information to answer that confidently.",
             "blocked",
         )
 
     if not answer.strip():
-        return ("Sorry, I wasn't able to generate a response. Let me escalate this to a human agent.", "modified")
+        return ("Sorry, I wasn't able to generate a response.", "modified")
     
     return (answer, "pass")

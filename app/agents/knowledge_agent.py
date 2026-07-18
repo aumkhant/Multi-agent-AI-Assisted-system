@@ -1,8 +1,8 @@
 from semantic_kernel import Kernel
 
 from app.agents.base import AgentOutcome
-from app.schemas import SearchKbInput
-from app.tools.knowledge_base import search_kb
+from app.mcp_client import call_tool
+from app.schemas import SearchKbOutput
 from app.utils.llm import complete_chat
 
 _SYSTEM_PROMPT = """You are KnowledgeAgent for a streaming and rental platform's support
@@ -14,15 +14,20 @@ suggest a human handoff. Never invent information not present in the JSON.
 
 
 async def handle(kernel: Kernel, conversation_id: str, message: str) -> AgentOutcome:
-    result = search_kb(conversation_id, SearchKbInput(query=message))
+    result = await call_tool(
+        "search_kb",
+        conversation_id,
+        {"query": message},
+        SearchKbOutput,
+    )
 
     if not result.articles:
         return AgentOutcome(
-            answer="I couldn't find anything in our knowledge base about that. I'd recommend "
-            "requesting a human handoff for this question.",
+            answer="I couldn't find anything in our knowledge base that answers that directly.",
             tools_used=["search_kb"],
             citations=[],
             next_action="none",
+            answered=False,
         )
 
     user_prompt = f"Customer question: {message}\n\nKB search results (JSON): {result.model_dump_json()}"

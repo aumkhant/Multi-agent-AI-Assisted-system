@@ -1,9 +1,8 @@
 from semantic_kernel import Kernel
-from sqlalchemy.orm import Session
 
 from app.agents.base import AgentOutcome
-from app.schemas import SearchFilmCatalogInput
-from app.tools.catalog import search_film_catalog
+from app.mcp_client import call_tool
+from app.schemas import SearchFilmCatalogOutput
 from app.utils.llm import complete_chat
 from app.utils.query_extraction import extract_title_query
 
@@ -16,10 +15,24 @@ catalog. Keep the answer to 1-3 sentences. Never invent films or data not presen
 
 
 async def handle(
-    kernel: Kernel, session: Session, conversation_id: str, message: str
+    kernel: Kernel, conversation_id: str, message: str
 ) -> AgentOutcome:
     query = extract_title_query(message)
-    result = search_film_catalog(session, conversation_id, SearchFilmCatalogInput(query=query))
+    result = await call_tool(
+        "search_film_catalog",
+        conversation_id,
+        {"query": query},
+        SearchFilmCatalogOutput,
+    )
+
+    if not result.results:
+        return AgentOutcome(
+            answer="I couldn't find a confirmed answer for that in our catalog data.",
+            tools_used=["search_film_catalog"],
+            citations=[],
+            next_action="none",
+            answered=False,
+        )
 
     user_prompt = f"Customer question: {message}\n\nCatalog search results (JSON): {result.model_dump_json()}"
     answer = await complete_chat(kernel, _SYSTEM_PROMPT, user_prompt)

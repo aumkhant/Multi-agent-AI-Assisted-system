@@ -10,12 +10,12 @@ Deterministic input guardrails (prompt injection / harmful content / sensitive m
         │  (only if the message passes)
         ▼
 TriageAgent  (LLM classification -> intent, selected_agent, confidence, reason)
-        │  (low confidence -> HumanHandoffAgent fallback)
         │  (explicit unrelated-topic detection -> GuardrailAgent / out_of_scope)
         ▼
 Specialist agent (Catalog | Subscription | RentalHistory | Knowledge | HumanHandoff)
-        │  each specialist calls exactly its own tool(s), then an LLM call
+        │  each specialist calls its tool through the local MCP surface, then an LLM call
         │  phrases the answer grounded in the tool's typed output
+        │  (if unanswered -> WebSearchAgent fallback)
         ▼
 GuardrailAgent  (final review: schema, leaked-prompt check, ungrounded-claim check, length)
         │
@@ -80,19 +80,15 @@ a redundant one.
 | SubscriptionAgent | Subscription status/renewal | `get_customer_streaming_subscription` |
 | RentalHistoryAgent | Recent rental summary | `get_customer_rental_history` |
 | KnowledgeAgent | General support Q&A | `search_kb` |
-| HumanHandoffAgent | Escalation, risky requests, low-confidence fallback | `create_handoff_ticket` |
+| HumanHandoffAgent | Escalation only for explicit user requests or sensitive-mutation guardrail interception | `create_handoff_ticket` |
+| WebSearchAgent | Public-web fallback when a specialist cannot answer from first-party data | `search_web` |
 | GuardrailAgent | Final answer review | none (deterministic checks only) |
 
-Each specialist calls its tool **deterministically** (the agent code invokes the tool
-directly, not via LLM function-calling) and then makes a single LLM call to phrase the
-final answer, instructed to use only the tool's JSON output. This trades away
-"the model decides when to call a tool" flexibility for something more important at
-this scope: every tool call is guaranteed to happen exactly when routing says it should,
-tool inputs/outputs stay strictly typed, and the behavior is testable without needing a
-live model to exercise the function-calling loop correctly. `search_film_catalog` and
-`get_customer_streaming_subscription`/`get_customer_rental_history` are still exposed
-with full MCP-ready metadata (see below), so swapping in real LLM-driven tool selection
-later is a contained change, not a rewrite.
+Each specialist calls its tool **through the app's MCP tool surface** rather than
+importing the underlying Python tool function directly. Concretely, `app/mcp_client.py`
+dispatches named MCP-style tool calls, and both the agents and `app/mcp_server.py` share
+the same registry in `app/mcp_tools.py`. This keeps the runtime path aligned with the
+published MCP contracts while preserving deterministic tool usage and typed inputs/outputs.
 
 ## Tool contracts and MCP readiness
 
@@ -107,16 +103,25 @@ Every tool (`app/tools/*.py`) has:
 `search_film_catalog`, `get_customer_streaming_subscription`, and
 `get_customer_rental_history` are backed by Postgres/Pagila via SQLAlchemy Core
 (parameterized `text()` queries - no string-built SQL). `search_kb` reads local markdown
-files under `knowledge_base/`. `create_handoff_ticket` writes to an in-memory list (mock,
-per the assignment's "Mock" designation).
+files under `knowledge_base/`. `search_web` reads public web results from DuckDuckGo's
+Instant Answer API. `handoff_ticket` is the only resource with full CRUD, implemented as
+an in-memory store (`create_handoff_ticket`, `get_handoff_ticket`, `list_handoff_tickets`,
+`update_handoff_ticket`, `delete_handoff_ticket`).
 
 A local MCP server (`app/mcp_server.py`, run via `python -m app.mcp_server`) now exposes
-all five tools over stdio using `mcp.server.fastmcp.FastMCP`, reusing the same
-`app/tools/*.py` functions and `ToolMetadata` name/description - so an MCP client
-(Claude Desktop, Claude Code, etc.) can call `search_film_catalog`,
-`get_customer_streaming_subscription`, `get_customer_rental_history`, `search_kb`, and
-`create_handoff_ticket` directly, independent of the FastAPI orchestrator. See the
-README for how to register it with an MCP client.
+all tools over stdio using `mcp.server.fastmcp.FastMCP`, reusing the same shared tool
+registry that the agents call through. That means an MCP client (Claude Desktop, Claude
+Code, etc.) and the in-app agents both hit the same named tool contracts.
+
+Only `handoff_ticket` gets CRUD because it is the only operational resource this
+assistant owns outright. The catalog, subscription, rental history, and knowledge-base
+tools are intentionally read-only: they represent source-of-truth product/account data
+or curated support content, so forcing artificial create/update/delete operations onto
+them would either violate current safety boundaries (for account data) or blur the
+difference between the assistant's runtime query path and a separate content-management
+workflow. Keeping those tools read-only preserves the original ownership and guardrail
+assumptions while still meeting the CRUD requirement on a resource that the app is
+designed to manage directly.
 
 ## Database
 
@@ -134,9 +139,9 @@ and a Standard trial subscription for `customer_id=3`.
   the final answer text.
 - **Never assist with harmful-content requests.** These are blocked before triage using a
   deterministic regex check so refusal is not dependent on LLM behavior.
-- **Never mutate account state.** No tool exists that can change a subscription/account;
-  `create_handoff_ticket` only ever creates a ticket. Sensitive-sounding requests are
-  intercepted before triage and always routed to `HumanHandoffAgent`.
+- **Never mutate account state.** No tool exists that can change a subscription/account.
+  Sensitive-sounding requests are intercepted before triage and routed to
+  `HumanHandoffAgent`, which creates a handoff ticket but performs no account mutation.
 - **Stay in domain.** Obviously unrelated questions are routed to `out_of_scope` and
   answered with a domain-limitation message instead of hitting the support KB.
 - **Protect customer data.** Specialist agents only ever query by the `customer_id` on
@@ -145,6 +150,14 @@ and a Standard trial subscription for `customer_id=3`.
 - **Missing customer_id.** Subscription/RentalHistory agents check for `None` and return
   a clear "I need your customer ID" answer with `next_action=await_customer_id` instead
   of crashing or querying with a null value.
+- **Human handoff is explicit-only, except safety interception.** The orchestrator no
+  longer uses handoff as a low-confidence fallback. It is used only when the customer
+  explicitly asks for a human, or when the sensitive-mutation guardrail forces safe
+  escalation.
+- **Unanswered specialist requests fall back to public web search.** If a specialist
+  cannot answer from its first-party source, the orchestrator replaces that specialist
+  outcome with `WebSearchAgent`'s response. The response's `selected_agent` is
+  `WebSearchAgent`, while `intent` remains the original triaged intent for traceability.
 
 ## Structured response contract
 

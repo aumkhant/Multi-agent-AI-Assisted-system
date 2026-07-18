@@ -9,3 +9,4 @@ class AgentOutcome:
     tools_used: list[str] = field(default_factory=list)
     citations: list[str] = field(default_factory=list)
     next_action: NextAction = "none"
+    answered: bool = True

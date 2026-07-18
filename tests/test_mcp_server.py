@@ -13,6 +13,11 @@ async def test_all_tools_are_registered_with_names_matching_tool_metadata():
         "get_customer_rental_history",
         "search_kb",
         "create_handoff_ticket",
+        "get_handoff_ticket",
+        "list_handoff_tickets",
+        "update_handoff_ticket",
+        "delete_handoff_ticket",
+        "search_web",
     }
 
 
