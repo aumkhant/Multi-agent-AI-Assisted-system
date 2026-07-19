@@ -12,6 +12,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "alembic>=1.13",
     "semantic-kernel>=1.18",
+    "opentelemetry-sdk>=1.18",
     "python-dotenv>=1.0",
     "mcp>=1.28",
 ]
