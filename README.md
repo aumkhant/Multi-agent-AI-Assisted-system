@@ -118,7 +118,7 @@ app/            FastAPI app, config, DB session, orchestrator, agents, tools, gu
                 mcp_server.py (local MCP server exposing the same tools)
 alembic/        Migrations (0001 streaming_available column, 0002 streaming_subscription)
 knowledge_base/ Local markdown articles used by search_kb
-evals/          11 eval examples (input, expected intent/agent/tools, safety behavior)
+evals/          14 eval examples (input, expected intent/agent/tools, safety behavior)
 tests/          Tool, guardrail, and API tests
 docs/           design.md, implementation_plan.md, ai_usage.md
 scripts/        restore_pagila.sh
